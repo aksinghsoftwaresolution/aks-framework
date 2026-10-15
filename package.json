@@ -1,0 +1,32 @@
+{
+  "name": "aks-framework",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "packages/cli"
+  ],
+  "description": "AKS Framework - TypeScript-first Node.js framework",
+  "scripts": {
+    "build": "npm run build:core && npm run build:cli",
+    "build:core": "tsc -p packages/core/tsconfig.json",
+    "build:cli": "tsc -p packages/cli/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsx examples/hello-api.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@aks-framework/cli": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/semver": "^7.8.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
