@@ -10,8 +10,6 @@ import {
   parseEnv,
 } from "../src/env.js";
 
-import { AKSConfig } from "../src/config.js";
-
 describe("parseEnv", () => {
   it("parses basic values", () => {
     expect(
