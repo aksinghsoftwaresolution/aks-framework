@@ -1,6 +1,6 @@
 # AKS Framework
 
-AKS Framework is a TypeScript-first backend framework for Node.js. Today, `@aks-framework/core` provides an HTTP runtime with route registration, request context, JSON request-body parsing, response helpers, middleware, and error handling.
+AKS Framework is a TypeScript-first backend framework for Node.js. `@aks-framework/core` provides an HTTP runtime, request validation, configuration and environment-file helpers, structured logging, and a dependency-injection container. `@aks-framework/cli` provides project diagnostics, resource generation, and update checks.
 
 Maintained by **AKSINGH SOFTWARE SOLUTION**.
 
@@ -9,7 +9,7 @@ Maintained by **AKSINGH SOFTWARE SOLUTION**.
 - **Core package:** `@aks-framework/core` `0.1.0`
 - **Runtime:** Node.js built-in HTTP server
 - **Current focus:** HTTP routing and request/response behavior
-- **Tests:** 24 tests currently exercise selected HTTP behaviors
+- **Tests:** Vitest suites cover core runtime behavior and CLI commands
 - **Status:** Under active development; no formal stability level is declared in package metadata
 
 ## Why AKS?
@@ -24,13 +24,13 @@ AKS Framework is currently under active development. The current release line is
 | --- | --- | --- |
 | HTTP server and routing | Implemented | Node.js HTTP server; `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes. |
 | Request context and parsing | Implemented | Method, path, headers, route params, query values, and JSON body. |
-| Responses | Implemented | JSON and text response helpers, status codes, and headers. |
-| Middleware | Implemented | Onion execution, short-circuiting, and error propagation for matched requests. |
-| HTTP behavior | Implemented | `HEAD` through `GET`, automatic `OPTIONS`, default `404`/`405`, and `Allow` headers. |
-| Error handling | Implemented | `app.onError()` and the default `handleError()` behavior. |
-| HTTP tests | Implemented | 24 tests exercise selected HTTP behaviors. |
-| Validation, authentication, persistence, dependency injection | Not implemented | No built-in systems for these concerns. |
-| Configuration, logging, CLI, and request validation | Not implemented | No built-in framework APIs for these concerns. |
+| Responses and middleware | Implemented | JSON/text helpers, status codes, headers, onion-style middleware, and short-circuiting. |
+| HTTP behavior and error handling | Implemented | `HEAD` through `GET`, automatic `OPTIONS`, default `404`/`405`, and customizable error handling. |
+| Request validation | Implemented | User-provided validators for body, query, and params via `validateRequest()`. |
+| Configuration and environment files | Implemented | Typed value access, diagnostics, and layered `.env` file loading. |
+| Logging and dependency injection | Implemented | Level-filtered logger with console/file transports; transient and singleton providers. |
+| CLI | Implemented | `doctor`, `generate`, and `update`; other advertised commands are placeholders. |
+| Authentication and persistence | Not implemented | No built-in authentication or database abstraction. |
 
 ## Features
 
@@ -42,18 +42,23 @@ AKS Framework is currently under active development. The current release line is
 - Middleware registration, onion-style execution, short-circuiting, and error propagation.
 - Framework error classes, a default error handler, and a custom error-handler hook.
 - `HEAD` handling through `GET`, automatic `OPTIONS`, and default `404`/`405` handling.
+- Configurable request validation for body, query, and route parameters.
+- Configuration access and environment-file parsing/loading.
+- Structured logging with console and file transports.
+- A dependency-injection container with transient and singleton registrations.
+- CLI commands for project diagnostics, resource generation, and package update checks.
 
 ## Quick Start
 
-This repository currently documents a local-checkout workflow rather than a registry installation. From the repository root, install the development dependencies, build the core package, and start the checked-in example:
+This repository currently documents a local-checkout workflow rather than a registry installation. From the repository root, install the dependencies, build the packages, and start the checked-in example:
 
 ```bash
 npm install
-npx tsc -p packages/core/tsconfig.json
+npm run build
 npm run dev
 ```
 
-The core build emits to `packages/core/dist`, which the example imports. The example listens on port `3000`:
+The example imports the built core package from `packages/core/dist` and listens on port `3000`:
 
 ```bash
 curl http://localhost:3000/hello
@@ -143,6 +148,26 @@ Middleware can short-circuit by not calling `next()` and returning a response re
 
 Middleware runs only after successful body parsing and route/method matching. It is not invoked for automatic `OPTIONS`, `404`, `405`, or malformed-body responses. Calling `next()` more than once throws an error and enters error handling.
 
+## Request Validation
+
+The core provides a validator interface and `validateRequest()` middleware, but does not include a schema-definition library. Supply validator functions for any combination of request body, query, and route params. A validator returns either `{ success: true, data }` or `{ success: false, issues }`; issues include a source, path, and message, with an optional code.
+
+On success, normalized validator output is stored under `ctx.validated.body`, `ctx.validated.query`, or `ctx.validated.params`. If any validator fails, the middleware throws `ValidationError` with status `422` and the collected issues. Register it with `app.use()` like other middleware.
+
+## Configuration and Environment Files
+
+`AKSConfig` reads explicitly provided values and environment variables. It supports `get()`, `getOrDefault()`, `require()`, numeric and boolean getters, and configuration diagnostics. Missing required values passed to `require()` throw an error.
+
+`parseEnv()`, `loadEnvFile()`, and `loadEnvFiles()` are also exported. By default, environment files are loaded in this order: `.env`, `.env.<NODE_ENV>`, `.env.local`, and `.env.<NODE_ENV>.local`; later files override earlier files. `AKSConfig` accepts `envFile` options to customize this behavior and `env` to provide an explicit environment map.
+
+## Logging
+
+`AKSLogger` supports `debug`, `info`, `warn`, and `error` levels, structured context, and configurable transports. It defaults to the console transport. `ConsoleTransport` and `FileTransport` are included; a custom transport can implement the exported `LogTransport` interface. Pass a logger to `AKSApp` to use it for framework startup and retrieve it with `app.getLogger()`.
+
+## Dependency Injection
+
+Each `AKSApp` owns a `DIContainer`, available through `app.getContainer()` and `ctx.container`. Register factories with `register()` for transient instances or `registerSingleton()` for cached instances, then resolve them by string or symbol token. The container detects circular dependencies and `dispose()` calls `dispose()` on resolved singleton instances that support it.
+
 ## Error Handling
 
 Register a custom handler with `app.onError(handler)`. The handler receives `(error, ctx)` and is expected to return a valid `ResponseResult`. If it does not, the HTTP layer falls back to a generic `500` response.
@@ -168,7 +193,24 @@ The default `handleError(ctx, error)` returns an `AKSError`'s status code and a 
 {"error":"Internal server error"}
 ```
 
-`ValidationError` is an error class; it does not validate request data.
+`ValidationError` is the error raised for validation failures; the application supplies the actual validator functions.
+
+## CLI
+
+The `@aks-framework/cli` package exposes the `aks` executable. From a project where it is installed, run:
+
+```bash
+aks --help
+aks doctor
+aks generate controller users
+aks update --dry-run
+```
+
+- `doctor` checks framework/runtime versions, project files, dependencies, and TypeScript setup. It is read-only by default. `--json` emits machine-readable output; JSON mode does not prompt or modify files. `--fix` can offer confirmed dependency updates that remain within the versions requested by `package.json`.
+- `generate` supports `controller`, `service`, `module`, and `middleware`. Generated files go under the corresponding `src/` subdirectory. Use `--dry-run` to preview or `--force` to overwrite existing files.
+- `update` checks installed AKS package versions and prints a package-manager command for available updates. It does not install updates; `--dry-run` previews without changing files.
+
+`diagnose`, `health`, `graph`, `contract`, and `security` currently print that they are not implemented.
 
 ## Core API
 
@@ -180,26 +222,30 @@ The package is named `@aks-framework/core`. Its exports map provides an ESM `imp
 | `createHTTPServer` | Create a Node.js HTTP server for an `AKSApp`. |
 | `AKSResponse` | Construct JSON and text `ResponseResult` values. |
 | `parseJSONBody` | Buffer and parse an incoming request as JSON. |
+| `AKSConfig` | Read configuration values and inspect their validity. |
+| `parseEnv`, `loadEnvFile`, `loadEnvFiles` | Parse and load `.env` files. |
+| `AKSLogger`, `ConsoleTransport`, `FileTransport` | Structured logging and built-in transports. |
+| `DIContainer` | Register and resolve transient or singleton dependencies. |
+| `validateRequest` | Middleware to run user-provided request validators. |
 | `handleError` | Default handler for framework and unknown errors. |
 | `AKSError` and subclasses | Framework error types. |
 | `RequestContext` | Context type passed to handlers and middleware. |
 | `ResponseResult` | Response status, headers, and body shape. |
 | `HTTPMethod` | Registered route method type: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. |
 | `Middleware`, `ErrorHandler`, `Route`, `RouteHandler` | Middleware, error-handler, and route types. |
+| Configuration, validation, logger, transport, environment, and container types | Types for the corresponding APIs. |
 | `AKS_VERSION` | Core version constant (`0.1.0`). |
 
-`AKSApp` exposes `get()`, `post()`, `put()`, `patch()`, `delete()`, `use()`, `onError()`, `getRoutes()`, `getMiddlewares()`, `getErrorHandler()`, and `listen()`.
+`AKSApp` exposes `get()`, `post()`, `put()`, `patch()`, `delete()`, `use()`, `onError()`, `getRoutes()`, `getMiddlewares()`, `getErrorHandler()`, `getContainer()`, `getLogger()`, and `listen()`.
 
 ## Current Limitations
 
 The current core does not provide:
 
 - Built-in authentication or database abstraction.
-- Built-in dependency injection, configuration system, or logging framework.
-- Built-in request validation system.
+- A schema-definition language or third-party validation-library integration; validators are supplied by the application.
 - Multipart or form-data parsing.
 - A request-body size limit in the JSON parser.
-- A framework CLI.
 - A declared Node.js `engines` requirement.
 
 ## Where AKS Fits
@@ -212,16 +258,13 @@ Run commands from the repository root:
 
 ```bash
 npm install
-npx tsc -p packages/core/tsconfig.json
 npm run build
 npm test
 npm run test:watch
 npm run dev
 ```
 
-The core TypeScript build emits to `packages/core/dist`. The root `build` script runs `tsc` with the root configuration, which does not define a dedicated `outDir`. The root TypeScript settings are `target: ES2022`, `module: NodeNext`, `moduleResolution: NodeNext`, and `strict: true`. No Node.js engines requirement is declared in package metadata.
-
-The current HTTP test file contains 24 tests that exercise selected routing, HTTP method, body parsing, response, middleware, and error-handling behaviors. They are not an exhaustive coverage claim.
+The build script compiles core and CLI packages to their respective `dist` directories. The root TypeScript settings are `target: ES2022`, `module: NodeNext`, `moduleResolution: NodeNext`, and `strict: true`. No Node.js engines requirement is declared in package metadata.
 
 ## Repository Layout
 
@@ -229,14 +272,17 @@ The current HTTP test file contains 24 tests that exercise selected routing, HTT
 examples/
   hello-api.ts
 packages/
+  cli/
+    src/       CLI commands and generators
+    tests/     CLI and generator tests
   core/
-    src/       HTTP runtime and public exports
-    tests/     HTTP behavior tests
+    src/       HTTP runtime and supporting framework APIs
+    tests/     Core runtime and API tests
 ```
 
 ## Roadmap
 
-The repository does not define a scheduled release roadmap. Possible future areas are proposals only, not implemented or committed features: validation, dependency injection, configuration, logging, CLI, database abstraction, authentication, testing utilities, plugins, and developer tooling.
+The repository does not define a scheduled release roadmap. Possible future areas are proposals only, not implemented or committed features: a built-in schema-definition API, database abstraction, authentication, testing utilities, plugins, and additional developer tooling.
 
 ## Contributing
 
@@ -244,4 +290,4 @@ Keep changes focused, preserve the explicit TypeScript API, and include tests fo
 
 ## License
 
-Package metadata currently declares MIT, but a `LICENSE` file should be added to the repository before distribution.
+AKS Framework is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
