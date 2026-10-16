@@ -1,9 +1,10 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   afterEach,
+  beforeEach,
   describe,
   expect,
   it,
@@ -17,19 +18,31 @@ import {
   inspectDependencies,
 } from "../../src/doctor/checks/dependencies.js";
 
+let testRoot: string;
 
-const testRoot = join(
-  tmpdir(),
-  "aks-doctor-tests",
-);
+beforeEach(async () => {
+  testRoot = await mkdtemp(
+    join(tmpdir(), "aks-doctor-tests-"),
+  );
+});
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  if (testRoot) {
   await rm(testRoot, {
     recursive: true,
     force: true,
   });
+}
 });
+
+async function createTestRoot(): Promise<string> {
+  testRoot = await mkdtemp(
+    join(tmpdir(), "aks-doctor-tests-"),
+  );
+
+  return testRoot;
+}
 
 describe("Doctor checks", () => {
   it("detects a valid project", async () => {
@@ -60,9 +73,7 @@ describe("Doctor checks", () => {
   });
 
   it("detects missing package.json", async () => {
-    await mkdir(testRoot, {
-      recursive: true,
-    });
+    await createTestRoot();
 
     const result = await checkProject({
       cwd: testRoot,
@@ -75,9 +86,7 @@ describe("Doctor checks", () => {
   });
 
   it("detects missing node_modules", async () => {
-    await mkdir(testRoot, {
-      recursive: true,
-    });
+    await createTestRoot();
 
     const result = await checkDependencies({
       cwd: testRoot,
@@ -170,9 +179,7 @@ it("detects installed dependencies", async () => {
 });
 
   it("detects TypeScript configuration", async () => {
-    await mkdir(testRoot, {
-      recursive: true,
-    });
+    await createTestRoot();
 
     await writeFile(
       join(testRoot, "tsconfig.json"),
@@ -191,9 +198,7 @@ it("detects installed dependencies", async () => {
   });
 
   it("detects missing TypeScript configuration", async () => {
-    await mkdir(testRoot, {
-      recursive: true,
-    });
+    await createTestRoot();
 
     const result = await checkTypeScript({
       cwd: testRoot,

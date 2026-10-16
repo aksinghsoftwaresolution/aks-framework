@@ -220,11 +220,14 @@ function parseSingleQuotedValue(value: string): string {
 }
 
 function removeInlineComment(value: string): string {
-  const commentIndex = value.search(/\s+#/);
-
-  if (commentIndex === -1) {
-    return value;
+  for (let index = 0; index < value.length - 1; index++) {
+    if (
+      (value[index] === " " || value[index] === "\t") &&
+      value[index + 1] === "#"
+    ) {
+      return value.slice(0, index);
+    }
   }
 
-  return value.slice(0, commentIndex);
+  return value;
 }
