@@ -492,4 +492,76 @@ it("can dispose and then track a newly registered singleton", async () => {
   expect(secondDisposeCount).toBe(1);
 });
 
+it("disposes a singleton only once during concurrent disposal", async () => {
+  const container = new DIContainer();
+
+  let finishDisposal!: () => void;
+  let disposeCount = 0;
+  let disposalFinished = false;
+
+  const disposalGate = new Promise<void>((resolve) => {
+    finishDisposal = resolve;
+  });
+
+  container.registerSingleton("service", () => ({
+    async dispose() {
+      disposeCount += 1;
+
+      await disposalGate;
+
+      disposalFinished = true;
+    },
+  }));
+
+  container.resolve("service");
+
+  const firstDisposal = container.dispose();
+  const secondDisposal = container.dispose();
+
+  expect(secondDisposal).toBe(firstDisposal);
+
+  // Allow cleanup to start while keeping the resource blocked.
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(disposeCount).toBe(1);
+  expect(disposalFinished).toBe(false);
+
+  finishDisposal();
+
+  await Promise.all([
+    firstDisposal,
+    secondDisposal,
+  ]);
+
+  expect(disposeCount).toBe(1);
+  expect(disposalFinished).toBe(true);
+});
+
+it("shares a disposal failure between concurrent callers", async () => {
+  const container = new DIContainer();
+  const disposalError = new Error("Disposal failed");
+
+  let disposeCount = 0;
+
+  container.registerSingleton("service", () => ({
+    dispose() {
+      disposeCount += 1;
+      throw disposalError;
+    },
+  }));
+
+  container.resolve("service");
+
+  const firstDisposal = container.dispose();
+  const secondDisposal = container.dispose();
+
+  expect(secondDisposal).toBe(firstDisposal);
+
+  await expect(firstDisposal).rejects.toBe(disposalError);
+  await expect(secondDisposal).rejects.toBe(disposalError);
+
+  expect(disposeCount).toBe(1);
+});
+
 });

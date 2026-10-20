@@ -20,6 +20,8 @@ export class DIContainer {
 
   private readonly resolving = new Set<string | symbol>();
 
+  private disposalPromise?: Promise<void>;
+
   private readonly singletonInstances = new Map<
     string | symbol,
     unknown
@@ -98,7 +100,27 @@ export class DIContainer {
     }
   }
 
-  async dispose(): Promise<void> {
+  dispose(): Promise<void> {
+    if (this.disposalPromise) {
+      return this.disposalPromise;
+    }
+
+    let disposal!: Promise<void>;
+
+    disposal = Promise.resolve()
+      .then(() => this.finishDisposal())
+      .finally(() => {
+        if (this.disposalPromise === disposal) {
+          this.disposalPromise = undefined;
+        }
+      });
+
+    this.disposalPromise = disposal;
+
+    return disposal;
+  }
+
+  private async finishDisposal(): Promise<void> {
     const errors: unknown[] = [];
 
     for (const instance of this.singletonInstances.values()) {
@@ -122,4 +144,5 @@ export class DIContainer {
       throw errors[0];
     }
   }
+
 }
