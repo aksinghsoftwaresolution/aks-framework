@@ -42,6 +42,10 @@ export type {
 } from "./response.js";
 
 export {
+  AKSDatabase,
+} from "./database.js";
+
+export {
   AKSError,
   BadRequestError,
   UnauthorizedError,
@@ -132,3 +136,10 @@ export {
 export type {
   FileTransportOptions,
 } from "./file-transport.js";
+
+export type {
+  AKSDatabaseOptions,
+  DatabaseAdapter,
+  DatabaseQueryResult,
+  DatabaseTransaction,
+} from "./database.js";

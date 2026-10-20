@@ -6,6 +6,7 @@ import {
   vi,
 } from "vitest";
 import { AKSApp } from "../src/app.js";
+import { AKSDatabase } from "../src/database.js";
 import {
   AKSLogger,
   type LogEntry,
@@ -278,4 +279,221 @@ describe("AKSApp logger integration", () => {
       app2.getLogger(),
     );
   });
+
+  it("disposes a registered singleton database on shutdown", async () => {
+    const adapterDispose = vi.fn();
+
+    const database = new AKSDatabase({
+      adapter: {
+        async query() {
+          return {
+            rows: [],
+            rowCount: 0,
+          };
+        },
+        async beginTransaction() {
+          throw new Error("Not implemented");
+        },
+        dispose: adapterDispose,
+      },
+    });
+
+    const app = new AKSApp();
+
+    app.getContainer().registerSingleton(
+      "database",
+      () => database,
+    );
+
+    expect(
+      app.getContainer().resolve<AKSDatabase>("database"),
+    ).toBe(database);
+
+    await app.dispose();
+
+    expect(adapterDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for active database queries before shutting down", async () => {
+    let finishQuery!: () => void;
+    let queryStarted!: () => void;
+    let adapterDisposed = false;
+
+    const queryGate = new Promise<void>((resolve) => {
+      finishQuery = resolve;
+    });
+
+    const startedGate = new Promise<void>((resolve) => {
+      queryStarted = resolve;
+    });
+
+    const database = new AKSDatabase({
+      adapter: {
+        async query() {
+          queryStarted();
+          await queryGate;
+
+          return {
+            rows: [],
+            rowCount: 0,
+          };
+        },
+        async beginTransaction() {
+          throw new Error("Not implemented");
+        },
+        dispose() {
+          adapterDisposed = true;
+        },
+      },
+    });
+
+    const app = new AKSApp();
+
+    app.getContainer().registerSingleton(
+      "database",
+      () => database,
+    );
+
+    const resolvedDatabase =
+      app.getContainer().resolve<AKSDatabase>("database");
+
+    const queryPromise = resolvedDatabase.query("SELECT 1");
+
+    await startedGate;
+
+    const disposalPromise = app.dispose();
+
+    // Shutdown must wait for the active query.
+    expect(adapterDisposed).toBe(false);
+
+    finishQuery();
+
+    await queryPromise;
+    await disposalPromise;
+
+    expect(adapterDisposed).toBe(true);
+  });
+
+  it("does not dispose the database twice on repeated shutdown", async () => {
+    const adapterDispose = vi.fn();
+
+    const app = new AKSApp();
+
+    app.getContainer().registerSingleton(
+      "database",
+      () =>
+        new AKSDatabase({
+          adapter: {
+            async query() {
+              return {
+                rows: [],
+                rowCount: 0,
+              };
+            },
+            async beginTransaction() {
+              throw new Error("Not implemented");
+            },
+            dispose: adapterDispose,
+          },
+        }),
+    );
+
+    app.getContainer().resolve<AKSDatabase>("database");
+
+    await app.dispose();
+    await app.dispose();
+
+    expect(adapterDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the HTTP server from listen()", async () => {
+  const app = new AKSApp();
+
+  const server = app.listen(0);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      if (server.listening) {
+        resolve();
+        return;
+      }
+
+      server.once("listening", resolve);
+      server.once("error", reject);
+    });
+
+    expect(server.listening).toBe(true);
+    expect(server.address()).not.toBeNull();
+  } finally {
+    await app.shutdown();
+  }
+});
+
+it("closes the HTTP server during shutdown", async () => {
+  const app = new AKSApp();
+
+  const server = app.listen(0);
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
+  });
+
+  await app.shutdown();
+
+  expect(server.listening).toBe(false);
+});
+
+it("shares concurrent shutdown calls", async () => {
+  const app = new AKSApp();
+
+  const server = app.listen(0);
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
+  });
+
+  const first = app.shutdown();
+  const second = app.shutdown();
+
+  expect(second).toBe(first);
+
+  await Promise.all([first, second]);
+
+  expect(server.listening).toBe(false);
+});
+
+it("disposes resources when no HTTP server was started", async () => {
+  const adapterDispose = vi.fn();
+
+  const database = new AKSDatabase({
+    adapter: {
+      async query() {
+        return {
+          rows: [],
+          rowCount: 0,
+        };
+      },
+      async beginTransaction() {
+        throw new Error("Not implemented");
+      },
+      dispose: adapterDispose,
+    },
+  });
+
+  const app = new AKSApp();
+
+  app.getContainer().registerSingleton(
+    "database",
+    () => database,
+  );
+
+  app.getContainer().resolve<AKSDatabase>("database");
+
+  await app.shutdown();
+
+  expect(adapterDispose).toHaveBeenCalledTimes(1);
+});
+  
 });

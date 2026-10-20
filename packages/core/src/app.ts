@@ -3,6 +3,7 @@ import type { RequestContext } from "./context.js";
 import type { Controller } from "./controller.js";
 import { DIContainer } from "./container.js";
 import { AKSLogger } from "./logger.js";
+import type { Server } from "node:http";
 
 export type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -34,6 +35,8 @@ export class AKSApp {
   private errorHandler?: ErrorHandler;
   private readonly container = new DIContainer();
   private readonly logger: AKSLogger;
+  private server?: Server;
+  private shutdownPromise?: Promise<void>;
 
   constructor(options: AKSAppOptions = {}) {
     this.logger = 
@@ -111,28 +114,80 @@ export class AKSApp {
   }
 
   getErrorHandler(): ErrorHandler | undefined {
-  return this.errorHandler;
+    return this.errorHandler;
 }
 
 getContainer(): DIContainer {
-  return this.container;
+    return this.container;
 }
 
 getLogger(): AKSLogger {
-  return this.logger;
+    return this.logger;
 }
 
-  listen(port: number): void {
+async dispose(): Promise<void> {
+  await this.container.dispose();
+}
+
+shutdown(): Promise<void> {
+  if (this.shutdownPromise) {
+    return this.shutdownPromise;
+  }
+
+  const shutdown = this.performShutdown();
+
+  this.shutdownPromise = shutdown;
+
+  return shutdown;
+}
+
+private async performShutdown(): Promise<void> {
+  try {
+    const server = this.server;
+
+    if (server?.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  } finally {
+    await this.dispose();
+  }
+}
+
+  listen(port: number): Server {
+  if (this.server) {
+    throw new Error("AKS application is already listening",)
+  }
   const server = createHTTPServer(this);
+  this.server = server;
+
+  server.once("close", () => {
+    if (this.server === server) {
+      this.server = undefined;
+    }
+  });
+
 
   server.listen(port, () => {
+    const address = server.address();
+
+    const actualPort = address && typeof address !== "string" ? address.port : port;
+
     this.logger.info(
       "AKS Framework started",
       {
-        port,
-        url: `http://localhost:${port}`,
-      },
-    );
+        port: actualPort,
+        url: `http://localhost:${actualPort}`,
+      });
   });
+  return server;
 }
 }
