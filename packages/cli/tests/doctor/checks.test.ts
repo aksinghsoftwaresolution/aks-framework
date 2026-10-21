@@ -174,7 +174,7 @@ it("detects installed dependencies", async () => {
     check: "dependencies",
     severity: "info",
     message:
-      "Dependencies are installed and up to date.",
+      "Dependencies are installed and satisfy package.json.",
   });
 });
 
@@ -305,7 +305,13 @@ it("detects an incompatible installed dependency", async () => {
   );
 });
 
-it("detects an available newer dependency version", async () => {
+it("does not require registry access for local dependency checks", async () => {
+  const fetchMock = vi.fn(() => {
+    throw new Error("Registry unavailable");
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
   await mkdir(
     join(testRoot, "node_modules", "example-package"),
     { recursive: true },
@@ -314,8 +320,6 @@ it("detects an available newer dependency version", async () => {
   await writeFile(
     join(testRoot, "package.json"),
     JSON.stringify({
-      name: "test-project",
-      version: "1.0.0",
       dependencies: {
         "example-package": "^1.0.0",
       },
@@ -335,79 +339,18 @@ it("detects an available newer dependency version", async () => {
     }),
   );
 
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        version: "1.3.0",
-      }),
-    })),
-  );
-
   const result = await checkDependencies({
     cwd: testRoot,
   });
+
+  expect(fetchMock).not.toHaveBeenCalled();
 
   expect(result).toEqual({
     check: "dependencies",
-    severity: "warning",
+    severity: "info",
     message:
-      "Some dependencies have newer versions.",
-    details:
-      "example-package: installed 1.2.0, latest 1.3.0.",
+      "Dependencies are installed and satisfy package.json.",
   });
-});
-
-it("does not fail when the npm registry is unavailable", async () => {
-  await mkdir(
-    join(testRoot, "node_modules", "example-package"),
-    { recursive: true },
-  );
-
-  await writeFile(
-    join(testRoot, "package.json"),
-    JSON.stringify({
-      name: "test-project",
-      version: "1.0.0",
-      dependencies: {
-        "example-package": "^1.0.0",
-      },
-    }),
-  );
-
-  await writeFile(
-    join(
-      testRoot,
-      "node_modules",
-      "example-package",
-      "package.json",
-    ),
-    JSON.stringify({
-      name: "example-package",
-      version: "1.2.0",
-    }),
-  );
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => {
-      throw new Error("Network unavailable");
-    }),
-  );
-
-  const result = await checkDependencies({
-    cwd: testRoot,
-  });
-
-  expect(result).toEqual({
-  check: "dependencies",
-  severity: "warning",
-  message:
-    "Dependencies are installed, but latest versions could not be checked.",
-  details:
-    "The npm registry could not be reached or returned invalid package metadata.",
-});
 });
 
 it("identifies safe dependency updates", async () => {
