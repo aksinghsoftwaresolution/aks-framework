@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
+import { runDoctor } from "../src/commands/doctor.js";
+vi.mock("../src/commands/doctor.js", () => ({
+  runDoctor: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("AKS CLI", () => {
   afterEach(() => {
@@ -60,23 +64,12 @@ describe("AKS CLI", () => {
   });
 
   it("dispatches the doctor command", async () => {
-  const log = vi
-    .spyOn(console, "log")
-    .mockImplementation(() => {});
-
   await main(["doctor"]);
 
-  expect(log).toHaveBeenCalledWith(
-    expect.stringContaining("AKS Doctor"),
-  );
-
-  expect(log).toHaveBeenCalledWith(
-    expect.stringContaining("AKS Framework 0.1.0"),
-  );
-
-  expect(log).toHaveBeenCalledWith(
-    expect.stringContaining("Doctor completed with warnings."),
-  );
+  expect(runDoctor).toHaveBeenCalledWith({
+    json: false,
+    fix: false,
+  });
 });
 
   

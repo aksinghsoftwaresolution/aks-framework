@@ -120,7 +120,9 @@ async function inspectDependency(
   cwd: string,
   name: string,
   requested: string,
+  checkRegistry: boolean,
 ): Promise<DependencyInfo> {
+
   const installedPackagePath = join(
     cwd,
     "node_modules",
@@ -137,7 +139,7 @@ async function inspectDependency(
     validRange(requested) !== null;
 
   const registryResult =
-  registryCheckable
+  checkRegistry && registryCheckable
     ? await getLatestVersion(name)
     : undefined;
 
@@ -157,7 +159,10 @@ const latest =
 
 export async function inspectDependencies(
   context: DoctorContext,
+  options: { checkRegistry?: boolean } = {},
 ): Promise<DependencyInspection> {
+  const checkRegistry = options.checkRegistry ?? true;
+
   const packagePath = join(
     context.cwd,
     "package.json",
@@ -190,6 +195,7 @@ export async function inspectDependencies(
         context.cwd,
         name,
         dependencyVersions[name],
+        checkRegistry,
       ),
     ),
   );
@@ -233,11 +239,11 @@ export async function inspectDependencies(
       ),
     }));
 
-  const registryUnavailable = dependencies.filter(
+  const registryUnavailable = checkRegistry ? dependencies.filter(
     dependency =>
       dependency.registryCheckable &&
       !dependency.latest,
-  );
+  ):[];
 
   return {
     dependencies,
@@ -296,7 +302,7 @@ export async function checkDependencies(
   }
 
   const inspection =
-    await inspectDependencies(context);
+    await inspectDependencies(context, { checkRegistry: false },);
 
   if (inspection.missing.length > 0) {
     return {
@@ -373,6 +379,6 @@ export async function checkDependencies(
     check: "dependencies",
     severity: "info",
     message:
-      "Dependencies are installed and up to date.",
+      "Dependencies are installed and satisfy package.json.",
   };
 }
