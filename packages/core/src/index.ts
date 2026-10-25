@@ -43,6 +43,7 @@ export type {
 
 export {
   AKSDatabase,
+  AKSDatabaseClient,
 } from "./database.js";
 
 export {
@@ -139,7 +140,13 @@ export type {
 
 export type {
   AKSDatabaseOptions,
+  AKSDatabaseClientOptions,
   DatabaseAdapter,
+  DatabaseAdapterBase,
+  DatabaseCapabilities,
   DatabaseQueryResult,
   DatabaseTransaction,
+  SQLDatabaseAdapter,
+  DocumentDatabaseAdapter,
+  KeyValueDatabaseAdapter,
 } from "./database.js";

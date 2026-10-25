@@ -1,4 +1,17 @@
 
+export interface DatabaseCapabilities {
+  readonly sql?: boolean;
+  readonly transactions?: boolean;
+  readonly documents?: boolean;
+  readonly keyValue?: boolean;
+}
+
+export interface DatabaseAdapterBase {
+  readonly capabilities: DatabaseCapabilities;
+
+  dispose?(): void | Promise<void>;
+}
+
 export interface DatabaseQueryResult<Row = Record<string, unknown>> {
   rows: Row[];
   rowCount: number;
@@ -14,36 +27,155 @@ export interface DatabaseTransaction {
   rollback(): Promise<void>;
 }
 
-export interface DatabaseAdapter {
+export interface DatabaseAdapter extends DatabaseAdapterBase {
   query<Row = Record<string, unknown>>(
     sql: string,
     parameters?: readonly unknown[],
   ): Promise<DatabaseQueryResult<Row>>;
 
   beginTransaction(): Promise<DatabaseTransaction>;
-
-  dispose?(): void | Promise<void>;
 }
 
 export interface AKSDatabaseOptions {
   adapter: DatabaseAdapter;
 }
 
-export class AKSDatabase {
-  private readonly adapter: DatabaseAdapter;
+export interface SQLDatabaseAdapter extends DatabaseAdapterBase {
+  readonly capabilities: DatabaseCapabilities & {
+    readonly sql: true;
+  };
+
+  query<Row = Record<string, unknown>>(
+    sql: string,
+    parameters?: readonly unknown[],
+  ): Promise<DatabaseQueryResult<Row>>;
+
+  beginTransaction?(): Promise<DatabaseTransaction>;
+}
+
+export interface DocumentDatabaseAdapter extends DatabaseAdapterBase {
+  readonly capabilities: DatabaseCapabilities & {
+    readonly documents: true;
+  };
+
+  find<T = Record<string, unknown>>(
+    collection: string,
+    filter?: Record<string, unknown>,
+  ): Promise<T[]>;
+
+  insert<T = Record<string, unknown>>(
+    collection: string,
+    document: T,
+  ): Promise<T>;
+
+  update(
+    collection: string,
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+  ): Promise<number>;
+
+  delete(
+    collection: string,
+    filter: Record<string, unknown>,
+  ): Promise<number>;
+}
+
+export interface KeyValueDatabaseAdapter extends DatabaseAdapterBase {
+  readonly capabilities: DatabaseCapabilities & {
+    readonly keyValue: true;
+  };
+
+  get(key: string): Promise<string | null>;
+
+  set(
+    key: string,
+    value: string,
+    options?: { expiresInSeconds?: number },
+  ): Promise<void>;
+
+  delete(key: string): Promise<boolean>;
+}
+
+export interface AKSDatabaseClientOptions {
+  adapter: DatabaseAdapterBase;
+}
+
+
+export class AKSDatabaseClient {
+  private readonly baseAdapter: DatabaseAdapterBase;
   private readonly activeOperations = new Set<Promise<void>>();
   private disposalPromise?: Promise<void>;
 
+  constructor(options: AKSDatabaseClientOptions) {
+    this.baseAdapter = options.adapter;
+  }
+
+  dispose(): Promise<void> {
+    if (this.disposalPromise) {
+      return this.disposalPromise;
+    }
+
+    this.disposalPromise = this.finishDisposal();
+
+    return this.disposalPromise;
+  }
+
+  protected trackOperation<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.assertNotDisposed();
+
+    const operationPromise = Promise.resolve().then(operation);
+
+    const settledPromise = operationPromise.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    this.activeOperations.add(settledPromise);
+
+    void settledPromise.then(() => {
+      this.activeOperations.delete(settledPromise);
+    });
+
+    return operationPromise;
+  }
+
+  protected assertNotDisposed(): void {
+  if (this.disposalPromise) {
+    throw new Error(this.disposedErrorMessage());
+  }
+}
+
+protected disposedErrorMessage(): string {
+  return "Database client has been disposed";
+}
+
+  private async finishDisposal(): Promise<void> {
+    while (this.activeOperations.size > 0) {
+      await Promise.all([...this.activeOperations]);
+    }
+
+    await this.baseAdapter.dispose?.();
+  }
+}
+
+export class AKSDatabase extends AKSDatabaseClient {
+  private readonly adapter: DatabaseAdapter;
+
   constructor(options: AKSDatabaseOptions) {
+    super({ adapter: options.adapter });
     this.adapter = options.adapter;
+  }
+
+    protected override disposedErrorMessage(): string {
+    return "AKSDatabase has been disposed";
   }
 
   async query<Row = Record<string, unknown>>(
     sql: string,
     parameters: readonly unknown[] = [],
   ): Promise<DatabaseQueryResult<Row>> {
-    this.assertNotDisposed();
-
     return this.trackOperation(() =>
       this.adapter.query<Row>(sql, parameters),
     );
@@ -52,8 +184,6 @@ export class AKSDatabase {
   async transaction<T>(
     callback: (transaction: DatabaseTransaction) => Promise<T>,
   ): Promise<T> {
-    this.assertNotDisposed();
-
     return this.trackOperation(async () => {
       const transaction = await this.adapter.beginTransaction();
 
@@ -75,52 +205,5 @@ export class AKSDatabase {
         throw error;
       }
     });
-  }
-
-  dispose(): Promise<void> {
-    if (this.disposalPromise) {
-      return this.disposalPromise;
-    }
-
-    // Set this synchronously so no new operations can enter.
-    this.disposalPromise = this.finishDisposal();
-
-    return this.disposalPromise;
-  }
-
-  private async finishDisposal(): Promise<void> {
-  // Wait until every operation that entered before disposal settles.
-  while (this.activeOperations.size > 0) {
-    await Promise.all([...this.activeOperations]);
-  }
-
-  await this.adapter.dispose?.();
-}
-
-  private trackOperation<T>(
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const operationPromise = Promise.resolve().then(operation);
-
-    // Track settlement rather than the operation's result so failures
-    // cannot prevent disposal from proceeding.
-    const settledPromise = operationPromise.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    this.activeOperations.add(settledPromise);
-
-    void settledPromise.then(() => {
-      this.activeOperations.delete(settledPromise);
-    });
-
-    return operationPromise;
-  }
-
-  private assertNotDisposed(): void {
-    if (this.disposalPromise) {
-      throw new Error("AKSDatabase has been disposed");
-    }
   }
 }

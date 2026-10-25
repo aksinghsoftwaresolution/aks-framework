@@ -6,6 +6,9 @@ import {
   type DatabaseAdapter,
   type DatabaseQueryResult,
   type DatabaseTransaction,
+  type SQLDatabaseAdapter,
+  type DocumentDatabaseAdapter,
+  type KeyValueDatabaseAdapter,
 } from "../src/database.js";
 
 function createMockAdapter() {
@@ -34,6 +37,10 @@ function createMockAdapter() {
   const dispose = vi.fn(async () => {});
 
   const adapter: DatabaseAdapter = {
+    capabilities:{
+      sql: true,
+      transactions: true,
+    },
     query,
     beginTransaction,
     dispose,
@@ -1094,6 +1101,55 @@ it("propagates database cleanup errors through DIContainer", async () => {
   await expect(container.dispose()).rejects.toBe(cleanupError);
 
   expect(adapter.dispose).toHaveBeenCalledOnce();
+});
+
+it("defines distinct SQL, document, and key-value adapter contracts", () => {
+  const sqlAdapter = {
+    capabilities: { sql: true },
+    query: async <Row = Record<string, unknown>>(
+      _sql: string,
+      _parameters?: readonly unknown[],
+    ): Promise<DatabaseQueryResult<Row>> => ({
+      rows: [] as Row[],
+      rowCount: 0,
+    }),
+  } satisfies SQLDatabaseAdapter;
+
+  const documentAdapter = {
+    capabilities: { documents: true },
+    find: async <T = Record<string, unknown>>(
+      _collection: string,
+      _filter?: Record<string, unknown>,
+    ): Promise<T[]> => [],
+    insert: async <T = Record<string, unknown>>(
+      _collection: string,
+      document: T,
+    ): Promise<T> => document,
+    update: async (
+      _collection: string,
+      _filter: Record<string, unknown>,
+      _update: Record<string, unknown>,
+    ): Promise<number> => 0,
+    delete: async (
+      _collection: string,
+      _filter: Record<string, unknown>,
+    ): Promise<number> => 0,
+  } satisfies DocumentDatabaseAdapter;
+
+  const keyValueAdapter = {
+    capabilities: { keyValue: true },
+    get: async (_key: string): Promise<string | null> => null,
+    set: async (
+      _key: string,
+      _value: string,
+      _options?: { expiresInSeconds?: number },
+    ): Promise<void> => {},
+    delete: async (_key: string): Promise<boolean> => false,
+  } satisfies KeyValueDatabaseAdapter;
+
+  expect(sqlAdapter.capabilities.sql).toBe(true);
+  expect(documentAdapter.capabilities.documents).toBe(true);
+  expect(keyValueAdapter.capabilities.keyValue).toBe(true);
 });
 
 });
