@@ -1,6 +1,6 @@
 
 import { describe, expect, it, vi } from "vitest";
-
+import { DIContainer } from "../src/container.js";
 import {
   AKSDatabase,
   type DatabaseAdapter,
@@ -1038,6 +1038,62 @@ it("waits for a failed transaction to roll back before disposing", async () => {
   expect(adapter.dispose).toHaveBeenCalledOnce();
 });
 
+it("integrates with DIContainer as a managed singleton", async () => {
+  const container = new DIContainer();
 
+  const adapter: DatabaseAdapter = {
+    query: vi.fn().mockResolvedValue({
+      rows: [],
+      rowCount: 0,
+    }),
+    beginTransaction: vi.fn(),
+    dispose: vi.fn().mockResolvedValue(undefined),
+  };
+
+  container.registerSingleton(
+    "database",
+    () => new AKSDatabase({ adapter }),
+  );
+
+  const first = container.resolve<AKSDatabase>("database");
+  const second = container.resolve<AKSDatabase>("database");
+
+  expect(first).toBe(second);
+
+  await first.query("SELECT 1");
+  await container.dispose();
+
+  expect(adapter.query).toHaveBeenCalledOnce();
+  expect(adapter.dispose).toHaveBeenCalledOnce();
+
+  await expect(first.query("SELECT 2")).rejects.toThrow(
+    "AKSDatabase has been disposed",
+  );
+});
+
+it("propagates database cleanup errors through DIContainer", async () => {
+  const container = new DIContainer();
+  const cleanupError = new Error("Database cleanup failed");
+
+  const adapter: DatabaseAdapter = {
+    query: vi.fn().mockResolvedValue({
+      rows: [],
+      rowCount: 0,
+    }),
+    beginTransaction: vi.fn(),
+    dispose: vi.fn().mockRejectedValue(cleanupError),
+  };
+
+  container.registerSingleton(
+    "database",
+    () => new AKSDatabase({ adapter }),
+  );
+
+  container.resolve<AKSDatabase>("database");
+
+  await expect(container.dispose()).rejects.toBe(cleanupError);
+
+  expect(adapter.dispose).toHaveBeenCalledOnce();
+});
 
 });
