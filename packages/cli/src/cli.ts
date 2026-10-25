@@ -4,6 +4,10 @@ import { AKS_VERSION } from "@aks-framework/core";
 import { runDoctor } from "./commands/doctor.js";
 import { runGenerate } from "./commands/generate.js";
 import { runUpdate } from "./commands/update.js";
+import { runDiagnose } from "./commands/diagnose.js";
+import { runHealth } from "./commands/health.js";
+import { runGraph } from "./commands/graph.js";
+import { runContract } from "./commands/contract.js";
 
 export type CLICommand = {
   name: string;
@@ -19,6 +23,19 @@ const commands: CLICommand[] = [
       runUpdate({
         dryRun: args.includes("--dry-run"),
       }),
+  },
+  {
+    name: "health",
+    description: "Check application health",
+    execute: (args) => {
+      const urlIndex = args.indexOf("--url");
+      const urlCandidate = urlIndex !== -1 ? args[urlIndex + 1] : undefined;
+
+      return runHealth({
+        url: urlCandidate?.startsWith("--") ? undefined : urlCandidate,
+        json: args.includes("--json"),
+      });
+    },
   },
   {
     name: "doctor",
@@ -37,29 +54,33 @@ const commands: CLICommand[] = [
   {
     name: "diagnose",
     description: "Diagnose application and runtime problems",
-    execute: () => {
-      console.log("AKS diagnose is not implemented yet.");
-    },
-  },
-  {
-    name: "health",
-    description: "Check application health",
-    execute: () => {
-      console.log("AKS health is not implemented yet.");
-    },
+    execute: (args) =>
+      runDiagnose({
+        json: args.includes("--json"),
+      }),
   },
   {
     name: "graph",
     description: "Inspect the application dependency graph",
-    execute: () => {
-      console.log("AKS graph is not implemented yet.");
-    },
+    execute: (args) =>
+      runGraph({
+        json: args.includes("--json"),
+      }),
   },
   {
     name: "contract",
-    description: "Inspect and validate API contracts",
-    execute: () => {
-      console.log("AKS contract is not implemented yet.");
+    description: "Validate an OpenAPI API contract",
+    execute: (args) => {
+      const fileIndex = args.indexOf("--file");
+      const fileCandidate = fileIndex !== -1 ? args[fileIndex + 1] : undefined;
+
+      return runContract({
+        file:
+          fileCandidate && !fileCandidate.startsWith("--")
+            ? fileCandidate
+            : undefined,
+        json: args.includes("--json"),
+      });
     },
   },
   {
@@ -83,9 +104,7 @@ function printHelp(): void {
   console.log("Commands:");
 
   for (const command of commands) {
-    console.log(
-      `  ${command.name.padEnd(12)} ${command.description}`,
-    );
+    console.log(`  ${command.name.padEnd(12)} ${command.description}`);
   }
 
   console.log("");
@@ -127,7 +146,9 @@ function printCommandHelp(commandName: string): void {
       console.log("");
       console.log("Options:");
       console.log("  --json       Output diagnostics as JSON");
-      console.log("  --fix        Offer safe dependency updates for confirmation");
+      console.log(
+        "  --fix        Offer safe dependency updates for confirmation",
+      );
       console.log("  -h, --help   Show this help");
       console.log("");
       console.log("Examples:");
@@ -146,7 +167,9 @@ function printCommandHelp(commandName: string): void {
       console.log("  aks update [options]");
       console.log("");
       console.log("Options:");
-      console.log("  --dry-run    Preview available updates without changing files");
+      console.log(
+        "  --dry-run    Preview available updates without changing files",
+      );
       console.log("  -h, --help   Show this help");
       console.log("");
       console.log("Examples:");
@@ -155,13 +178,77 @@ function printCommandHelp(commandName: string): void {
       console.log("");
       console.log("Note:");
       console.log("  Updates are not installed automatically.");
-      console.log("  Review the proposed package-manager command before running it.");
+      console.log(
+        "  Review the proposed package-manager command before running it.",
+      );
+      break;
+
+    case "diagnose":
+      console.log("AKS Framework Diagnose");
+      console.log("");
+      console.log("Usage:");
+      console.log("  aks diagnose [options]");
+      console.log("");
+      console.log("Options:");
+      console.log("  --json       Output diagnostics as JSON");
+      console.log("  -h, --help   Show this help");
+      console.log("");
+      console.log("Examples:");
+      console.log("  aks diagnose");
+      console.log("  aks diagnose --json");
+      console.log("");
+      console.log("This command is read-only.");
+      break;
+
+    case "health":
+      console.log("AKS Framework Health");
+      console.log("");
+      console.log("Usage:");
+      console.log("  aks health --url <endpoint> [options]");
+      console.log("");
+      console.log("Options:");
+      console.log("  --url <endpoint>  HTTP or HTTPS endpoint to check");
+      console.log("  --json            Output the result as JSON");
+      console.log("  -h, --help        Show this help");
+      console.log("");
+      console.log("Examples:");
+      console.log("  aks health --url http://localhost:3000/health");
+      console.log("  aks health --url http://localhost:3000/health --json");
+      break;
+
+    case "graph":
+      console.log("AKS Framework Graph");
+      console.log("");
+      console.log("Usage:");
+      console.log("  aks graph [options]");
+      console.log("");
+      console.log("Options:");
+      console.log("  --json       Output the dependency graph as JSON");
+      console.log("  -h, --help   Show this help");
+      console.log("");
+      console.log("Examples:");
+      console.log("  aks graph");
+      console.log("  aks graph --json");
+      break;
+
+    case "contract":
+      console.log("AKS Framework Contract");
+      console.log("");
+      console.log("Usage:");
+      console.log("  aks contract --file <path> [options]");
+      console.log("");
+      console.log("Options:");
+      console.log("  --file <path>  OpenAPI JSON or YAML document");
+      console.log("  --json         Output the result as JSON");
+      console.log("  -h, --help     Show this help");
+      console.log("");
+      console.log("Examples:");
+      console.log("  aks contract --file openapi.yaml");
+      console.log("  aks contract --file openapi.json --json");
       break;
 
     default: {
-      const command = commands.find(
-        (item) => item.name === commandName,
-      );
+      const command = commands.find((item) => item.name === commandName);
 
       if (!command) {
         console.error(`Unknown command: ${commandName}`);
@@ -178,7 +265,9 @@ function printCommandHelp(commandName: string): void {
       console.log("Usage:");
       console.log(`  aks ${command.name} [options]`);
       console.log("");
-      console.log("This command does not have additional options documented yet.");
+      console.log(
+        "This command does not have additional options documented yet.",
+      );
       break;
     }
   }
@@ -195,19 +284,12 @@ function findCommand(name: string): CLICommand | undefined {
 export async function main(
   args: string[] = process.argv.slice(2),
 ): Promise<void> {
-  if (
-    args.length === 1 &&
-    (args[0] === "--version" || args[0] === "-v")
-  ) {
+  if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
     printVersion();
     return;
   }
 
-  if (
-    args.length === 0 ||
-    args[0] === "--help" ||
-    args[0] === "-h"
-  ) {
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     printHelp();
     return;
   }
@@ -224,10 +306,7 @@ export async function main(
     return;
   }
 
-  if (
-    commandArgs.includes("--help") ||
-    commandArgs.includes("-h")
-  ) {
+  if (commandArgs.includes("--help") || commandArgs.includes("-h")) {
     printCommandHelp(commandName);
     return;
   }
@@ -236,11 +315,7 @@ export async function main(
 }
 
 void main().catch((error) => {
-  console.error(
-    error instanceof Error
-      ? error.message
-      : String(error),
-  );
+  console.error(error instanceof Error ? error.message : String(error));
 
   process.exitCode = 1;
 });
