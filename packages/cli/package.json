@@ -19,6 +19,8 @@
     "dist"
   ],
   "dependencies": {
-    "semver": "^7.8.5"
+    "@apidevtools/swagger-parser": "^13.1.0",
+    "semver": "^7.8.5",
+    "typescript": "^5.9.3"
   }
 }
