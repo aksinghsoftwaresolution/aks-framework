@@ -173,14 +173,10 @@ export function createHTTPServer(app: AKSApp) {
 
     const path = url.pathname;
 
-    const query: Record<string, string> = Object.create(null) as Record<
-  string,
-  string
->;
-
-for (const [key, value] of url.searchParams.entries()) {
-  query[key] = value;
-}
+    const query = Object.setPrototypeOf(
+  Object.fromEntries(url.searchParams.entries()),
+  null,
+) as Record<string, string>;
 
     const pathMatchedRoutes: Array<{
       route: ReturnType<AKSApp["getRoutes"]>[number];
