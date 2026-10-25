@@ -237,7 +237,7 @@ for (const route of routes) {
 
         const methodMatches =
           route.method === method ||
-          (method === "HEAD" && route.method === "GET");
+          (method === "HEAD" && route.method === "GET")
 
         if (!methodMatches) {
           continue;
