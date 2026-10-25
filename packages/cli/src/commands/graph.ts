@@ -158,7 +158,7 @@ function detectCyclesWithLimit(
       });
     }
 
-    if (truncated) break;
+    if (truncated || searchTruncated) break;
   }
 
   cycles.sort((a, b) => a.join("->").localeCompare(b.join("->")));

@@ -173,11 +173,14 @@ export function createHTTPServer(app: AKSApp) {
 
     const path = url.pathname;
 
-    const query: Record<string, string> = {};
+    const query: Record<string, string> = Object.create(null) as Record<
+  string,
+  string
+>;
 
-    for (const [key, value] of url.searchParams.entries()) {
-      query[key] = value;
-    }
+for (const [key, value] of url.searchParams.entries()) {
+  query[key] = value;
+}
 
     const pathMatchedRoutes: Array<{
       route: ReturnType<AKSApp["getRoutes"]>[number];
@@ -234,8 +237,7 @@ for (const route of routes) {
 
         const methodMatches =
           route.method === method ||
-          (method === "HEAD" && route.method === "GET") //||
-          //(method === "OPTIONS");
+          (method === "HEAD" && route.method === "GET")
 
         if (!methodMatches) {
           continue;

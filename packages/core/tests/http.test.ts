@@ -1338,4 +1338,58 @@ it("exposes its dependency injection container", () => {
 });
 
 
+  it("safely handles special query parameter names", async () => {
+    const app = new AKSApp();
+
+    app.get("/query", async (ctx) => {
+      return {
+        proto: ctx.query["__proto__"],
+        constructor: ctx.query["constructor"],
+        toString: ctx.query["toString"],
+        normal: ctx.query["normal"],
+        hasNullPrototype: Object.getPrototypeOf(ctx.query) === null,
+      };
+    });
+
+    const server = createHTTPServer(app);
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, resolve);
+    });
+
+    const address = server.address();
+
+    if (!address || typeof address === "string") {
+      throw new Error("Failed to determine server address");
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/query?__proto__=injected&constructor=test&toString=value&normal=works`,
+      );
+
+      expect(response.status).toBe(200);
+
+      await expect(response.json()).resolves.toEqual({
+        proto: "injected",
+        constructor: "test",
+        toString: "value",
+        normal: "works",
+        hasNullPrototype: true,
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  });
+
+
 });
