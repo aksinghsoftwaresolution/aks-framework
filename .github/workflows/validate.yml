@@ -48,6 +48,65 @@ jobs:
       - name: Execute Test Suite
         run: npm test
 
+  package-integrity:
+    name: Package Integrity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Compile TypeScript Packages
+        run: npm run build
+
+      - name: Create Package Archives
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/aks-packages"
+
+          npm pack ./packages/core \
+            --pack-destination "$RUNNER_TEMP/aks-packages"
+
+          npm pack ./packages/cli \
+            --pack-destination "$RUNNER_TEMP/aks-packages"
+
+          npm pack ./packages/driver-postgres \
+            --pack-destination "$RUNNER_TEMP/aks-packages"
+
+      - name: Verify Package Archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CORE="$RUNNER_TEMP/aks-packages/aks-framework-core-0.1.0.tgz"
+          CLI="$RUNNER_TEMP/aks-packages/aks-framework-cli-0.1.0.tgz"
+          POSTGRES="$RUNNER_TEMP/aks-packages/aks-framework-driver-postgres-0.1.0.tgz"
+
+          test -f "$CORE"
+          test -f "$CLI"
+          test -f "$POSTGRES"
+
+          tar -tzf "$CORE" | grep -qx 'package/dist/index.js'
+          tar -tzf "$CORE" | grep -qx 'package/dist/index.d.ts'
+
+          tar -tzf "$CLI" | grep -qx 'package/dist/cli.js'
+          tar -tzf "$CLI" | grep -qx 'package/dist/index.js'
+          tar -tzf "$CLI" | grep -qx 'package/dist/index.d.ts'
+
+          tar -tzf "$POSTGRES" | grep -qx 'package/dist/index.js'
+          tar -tzf "$POSTGRES" | grep -qx 'package/dist/index.d.ts'
+
+          echo "All package archives contain the expected compiled entry points."
+
   security-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
