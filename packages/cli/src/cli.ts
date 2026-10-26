@@ -8,6 +8,7 @@ import { runDiagnose } from "./commands/diagnose.js";
 import { runHealth } from "./commands/health.js";
 import { runGraph } from "./commands/graph.js";
 import { runContract } from "./commands/contract.js";
+import { pathToFileURL } from "node:url";
 
 export type CLICommand = {
   name: string;
@@ -314,8 +315,12 @@ export async function main(
   await command.execute(commandArgs);
 }
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+const invokedPath = process.argv[1];
 
-  process.exitCode = 1;
-});
+if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+
+    process.exitCode = 1;
+  });
+}

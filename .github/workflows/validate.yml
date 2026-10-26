@@ -111,6 +111,8 @@ jobs:
 
           echo "All package archives contain the expected compiled entry points."
 
+      - name: Test Installed Consumer Packages
+        run: node scripts/consumer-smoke.mjs
   security-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
