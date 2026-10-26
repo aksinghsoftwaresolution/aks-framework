@@ -2,7 +2,7 @@
 
 AKS Framework is a TypeScript-first backend framework for Node.js, designed to provide an explicit HTTP runtime, dependency injection, configuration management, structured logging, request validation, database abstractions, and developer tooling.
 
-The monorepo includes `@aks-framework/core`, `@aks-framework/cli`, and the PostgreSQL driver package.
+The monorepo includes `@aks-framework/core`, `@aks-framework/cli`, and `@aks-framework/driver-postgres`.
 
 Maintained by **AKSINGH SOFTWARE SOLUTION**.
 
@@ -10,7 +10,7 @@ Maintained by **AKSINGH SOFTWARE SOLUTION**.
 
 - **Core package:** `@aks-framework/core` (`0.1.0`)
 - **CLI package:** `@aks-framework/cli`
-- **Database driver:** PostgreSQL driver package
+- **Database driver:** `@aks-framework/driver-postgres`
 - **Runtime:** Node.js built-in HTTP server
 - **Language:** TypeScript
 - **Testing:** Vitest
@@ -41,7 +41,7 @@ The current release line is `0.1.0`. The repository does not declare a supported
 | Dependency injection | Implemented | Transient and singleton registrations, circular-dependency detection, and disposable singleton support |
 | Database abstraction | Implemented | Database adapter contract, queries, transactions, and resource lifecycle management |
 | PostgreSQL driver | Implemented | PostgreSQL pool integration, connection verification, queries, transactions, and disposal handling |
-| CLI | Implemented | Diagnostics, resource generation, update checks, health, dependency graph, API contract, and security tooling |
+| CLI | Partially implemented | Diagnostics, resource generation, update checks, health checks, dependency graph, and API contract tooling; security command is a placeholder |
 | Authentication | Not implemented | No built-in authentication system is currently provided |
 
 The repository's test suite currently contains **498 passing tests across 37 test files**. This is a snapshot of the current development state, not a guarantee of production readiness.
@@ -63,7 +63,7 @@ The repository's test suite currently contains **498 passing tests across 37 tes
 - Dependency injection with transient and singleton lifetimes.
 - Database adapter abstractions, query execution, transaction handling, and resource cleanup.
 - PostgreSQL connection pooling and transaction support through the PostgreSQL driver.
-- CLI tooling for diagnostics, resource generation, updates, health, dependency graphs, API contracts, and security checks.
+- CLI tooling for diagnostics, resource generation, update checks, health checks, dependency graphs, and API contract tooling. The security command is currently a placeholder.
 
 ## Quick Start
 
@@ -316,13 +316,60 @@ Current database capabilities include:
 - PostgreSQL connection verification.
 - Handling of connection, query, transaction, and pool-disposal failures.
 
-The PostgreSQL driver uses a connection pool and verifies connectivity during connection setup. Transaction completion and disposal behavior have dedicated regression tests, including concurrent operations and failure paths.
+The `@aks-framework/driver-postgres` package uses a PostgreSQL connection pool and verifies connectivity during connection setup. Transaction completion and disposal behavior have dedicated regression tests, including concurrent operations and failure paths.
 
-### Database testing
+### PostgreSQL Usage
 
-The current automated suite includes database abstraction tests and PostgreSQL driver tests. Mock-based tests cover transaction and resource lifecycle behavior without requiring a locally installed PostgreSQL server.
+The following ESM example shows how to register the PostgreSQL driver, connect to the database, execute a parameterized query, and dispose of database resources.
 
-The repository also contains a PostgreSQL driver integration-test file. The existence of an integration-test file does not, by itself, establish that a live external PostgreSQL instance was used during the latest test run.
+It assumes the required packages are installed, `DATABASE_URL` is configured, and a `users` table exists in the target database.
+
+```ts
+import {
+  AKSDatabase,
+  DatabaseDriverRegistry,
+} from "@aks-framework/core";
+import { PostgresDatabaseDriver } from "@aks-framework/driver-postgres";
+
+async function main(): Promise<void> {
+  const registry = new DatabaseDriverRegistry();
+  registry.register(new PostgresDatabaseDriver());
+
+  const adapter = await registry.connect("postgres", {
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  const database = new AKSDatabase({
+    adapter: adapter as import("@aks-framework/core").DatabaseAdapter,
+  });
+
+  try {
+    const result = await database.query<{ id: number; name: string }>(
+      "SELECT id, name FROM users WHERE id = $1",
+      [7],
+    );
+
+    console.log(result.rows);
+  } finally {
+    await database.dispose();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error("Database operation failed:", error);
+  process.exitCode = 1;
+});
+```
+
+The PostgreSQL driver verifies connectivity during connection setup. The query uses a parameterized value rather than interpolating input into SQL.
+
+`DatabaseDriverRegistry.connect()` returns the general `DatabaseAdapterBase` type. The example uses a type assertion because `AKSDatabase` requires a `DatabaseAdapter`. The PostgreSQL adapter implements the SQL query and transaction operations used by this example. The assertion does not perform a runtime conversion or additional validation.
+
+### Database Testing
+
+The automated suite includes database abstraction tests and PostgreSQL driver tests. Mock-based tests cover transaction and resource lifecycle behavior without requiring a locally installed PostgreSQL server.
+
+The repository also contains a PostgreSQL driver integration-test file. The integration test uses a mocked `pg.Pool`; it verifies the interaction between the driver registry, PostgreSQL driver, and database abstraction, but does not establish connectivity to a live PostgreSQL server.
 
 For application-specific database setup, use the adapter and driver APIs exported by the relevant packages.
 
@@ -380,7 +427,7 @@ Available command groups include:
 - `diagnose` — application and runtime diagnostics.
 - `graph` — inspect the application dependency graph.
 - `contract` — API contract tooling.
-- `security` — application security tooling.
+- `security` — reserved CLI command; security checks are not implemented yet.
 
 ### Doctor
 
@@ -427,7 +474,7 @@ aks update --dry-run
 
 The update command checks installed AKS package versions and reports available updates. It prints a package-manager command rather than installing updates itself. `--dry-run` previews behavior without changing files.
 
-The commands are part of the CLI's current development scope. Their availability does not imply that every diagnostic or analysis capability is production-ready.
+The CLI is under active development. The `security` command is currently a placeholder and does not perform security checks. Other commands should be evaluated according to their documented behavior; command availability alone does not imply production readiness.
 
 ## Core API
 
@@ -472,6 +519,8 @@ The current framework does not provide:
 
 Database access is available through the database abstraction and PostgreSQL driver. This does not mean that every database engine or persistence feature is supported.
 
+The CLI's `security` command is a placeholder and does not currently perform security checks.
+
 ## Where AKS Fits
 
 AKS focuses on the Node.js backend/runtime layer: accepting HTTP requests, matching routes, executing middleware, validating requests, creating responses, managing dependencies, and providing database access through adapters.
@@ -499,7 +548,7 @@ The root TypeScript configuration uses:
 - `moduleResolution: NodeNext`
 - `strict: true`
 
-The latest verified full test run passed **498 tests across 37 test files**.
+The latest recorded full test run passed **498 tests across 37 test files**. Run the suite again after changes to verify the current count.
 
 Before submitting changes, run:
 
