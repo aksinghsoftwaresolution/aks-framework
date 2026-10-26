@@ -1,3 +1,4 @@
+
 name: Project Validation Suite
 
 on:
@@ -11,7 +12,44 @@ permissions:
 
 jobs:
   validate:
-    name: Build and Test
+    name: Build and Test (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24]
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Compile TypeScript Packages
+        run: npm run build
+
+      - name: Check CLI Version
+        run: node packages/cli/dist/cli.js --version
+
+      - name: Check CLI Help
+        run: node packages/cli/dist/cli.js --help
+
+      - name: Run Framework Doctor Check
+        run: node packages/cli/dist/cli.js doctor
+
+      - name: Execute Test Suite
+        run: npm test
+
+  security-audit:
+    name: Dependency Security Audit
     runs-on: ubuntu-latest
 
     steps:
@@ -27,11 +65,5 @@ jobs:
       - name: Install Monorepo Dependencies
         run: npm ci
 
-      - name: Compile TypeScript Packages
-        run: npm run build
-
-      - name: Run Framework Doctor Check
-        run: node packages/cli/dist/cli.js doctor
-
-      - name: Execute Test Suite
-        run: npm test
+      - name: Audit Dependencies
+        run: npm audit --audit-level=high
