@@ -31,7 +31,7 @@ jobs:
         run: npm run build
 
       - name: Run Framework Doctor Check
-        run: ./node_modules/.bin/aks doctor
+        run: node packages/cli/dist/cli.js doctor
 
       - name: Execute Test Suite
         run: npm test
