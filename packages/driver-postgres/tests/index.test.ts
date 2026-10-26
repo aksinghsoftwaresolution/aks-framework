@@ -230,7 +230,7 @@ describe("PostgresDatabaseDriver", () => {
     expect(mocks.release).toHaveBeenCalledOnce();
   });
 
-  
+
   it("releases the client with an error if commit fails", async () => {
     configureClient();
 
@@ -269,8 +269,27 @@ describe("PostgresDatabaseDriver", () => {
     expect(mocks.release).toHaveBeenCalledOnce();
   });
 
-  
-it("shares the same promise for concurrent disposal calls", async () => {
+  it("releases the client when commit rejects with a non-Error value", async () => {
+    configureClient();
+
+    const commitFailure = "COMMIT failed";
+
+    mocks.clientQuery
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+      .mockRejectedValueOnce(commitFailure); // COMMIT
+
+    const transaction = await createAdapter().beginTransaction();
+
+    await expect(transaction.commit()).rejects.toBe(commitFailure);
+
+    expect(mocks.release).toHaveBeenCalledWith(true);
+
+    await expect(
+      transaction.query("SELECT 1"),
+    ).rejects.toThrow("PostgreSQL transaction has already finished");
+  });
+
+  it("shares the same promise for concurrent disposal calls", async () => {
   let finishDisposal!: () => void;
 
   mocks.end.mockReturnValueOnce(
@@ -559,4 +578,20 @@ it("shares one operation for concurrent commit calls", async () => {
   expect(mocks.release).toHaveBeenCalledOnce();
 });
 
+  it("shares the same rejected promise when pool disposal fails", async () => {
+    const adapter = createAdapter();
+    const disposalError = new Error("Pool shutdown failed");
+
+    mocks.end.mockRejectedValueOnce(disposalError);
+
+    const firstDisposal = adapter.dispose();
+    const secondDisposal = adapter.dispose();
+
+    expect(secondDisposal).toBe(firstDisposal);
+
+    await expect(firstDisposal).rejects.toBe(disposalError);
+    await expect(secondDisposal).rejects.toBe(disposalError);
+
+    expect(mocks.end).toHaveBeenCalledOnce();
+  });
 });
