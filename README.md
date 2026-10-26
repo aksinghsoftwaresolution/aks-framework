@@ -44,7 +44,7 @@ The current release line is `0.1.0`. The repository does not declare a supported
 | CLI | Partially implemented | Diagnostics, resource generation, update checks, health checks, dependency graph, and API contract tooling; security command is a placeholder |
 | Authentication | Not implemented | No built-in authentication system is currently provided |
 
-The repository's test suite currently contains **498 passing tests across 37 test files**. This is a snapshot of the current development state, not a guarantee of production readiness.
+The repository's test suite last recorded **498 passing tests across 37 test files**. This is a snapshot of the development state at that time, not a guarantee of production readiness. Run the suite again to verify the current result.
 
 ## Features
 
@@ -426,8 +426,38 @@ Available command groups include:
 - `health` — application health tooling.
 - `diagnose` — application and runtime diagnostics.
 - `graph` — inspect the application dependency graph.
-- `contract` — API contract tooling.
+- `contract` — validate OpenAPI API contracts using Swagger Parser.
 - `security` — reserved CLI command; security checks are not implemented yet.
+
+### Contract Validation (OpenAPI)
+
+The AKS CLI uses [`@apidevtools/swagger-parser`](https://www.npmjs.com/package/@apidevtools/swagger-parser) to parse and validate existing OpenAPI documents in JSON or YAML format.
+
+**Validate an OpenAPI YAML document:**
+
+```bash
+aks contract --file openapi.yaml
+```
+
+**Validate an OpenAPI JSON document with machine-readable output:**
+
+```bash
+aks contract --file openapi.json --json
+```
+
+**Options:**
+
+| Option | Description |
+| --- | --- |
+| `--file <path>` | Path to the OpenAPI JSON or YAML document. Required. |
+| `--json` | Output the validation result as JSON. |
+| `-h`, `--help` | Show contract command help. |
+
+The command reports whether the document is valid and, when available, includes its OpenAPI version, API title, and API version. JSON results include a `success` field and a `message`. Failed validation sets the process exit code to `1`.
+
+Validation failures include invalid documents, missing files, and a missing document path.
+
+**Current scope:** This command validates existing OpenAPI documents. It does not generate specifications automatically from AKS routes or provide a Swagger UI.
 
 ### Doctor
 
