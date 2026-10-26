@@ -95,15 +95,19 @@ jobs:
           test -f "$CLI"
           test -f "$POSTGRES"
 
-          tar -tzf "$CORE" | grep -qx 'package/dist/index.js'
-          tar -tzf "$CORE" | grep -qx 'package/dist/index.d.ts'
+          tar -tzf "$CORE" > "$RUNNER_TEMP/core-files.txt"
+          tar -tzf "$CLI" > "$RUNNER_TEMP/cli-files.txt"
+          tar -tzf "$POSTGRES" > "$RUNNER_TEMP/postgres-files.txt"
 
-          tar -tzf "$CLI" | grep -qx 'package/dist/cli.js'
-          tar -tzf "$CLI" | grep -qx 'package/dist/index.js'
-          tar -tzf "$CLI" | grep -qx 'package/dist/index.d.ts'
+          grep -qx 'package/dist/index.js' "$RUNNER_TEMP/core-files.txt"
+          grep -qx 'package/dist/index.d.ts' "$RUNNER_TEMP/core-files.txt"
 
-          tar -tzf "$POSTGRES" | grep -qx 'package/dist/index.js'
-          tar -tzf "$POSTGRES" | grep -qx 'package/dist/index.d.ts'
+          grep -qx 'package/dist/cli.js' "$RUNNER_TEMP/cli-files.txt"
+          grep -qx 'package/dist/index.js' "$RUNNER_TEMP/cli-files.txt"
+          grep -qx 'package/dist/index.d.ts' "$RUNNER_TEMP/cli-files.txt"
+
+          grep -qx 'package/dist/index.js' "$RUNNER_TEMP/postgres-files.txt"
+          grep -qx 'package/dist/index.d.ts' "$RUNNER_TEMP/postgres-files.txt"
 
           echo "All package archives contain the expected compiled entry points."
 
