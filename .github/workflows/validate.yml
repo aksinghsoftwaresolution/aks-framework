@@ -1,0 +1,37 @@
+name: Project Validation Suite
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Compile TypeScript Packages
+        run: npm run build
+
+      - name: Run Framework Doctor Check
+        run: npx --no-install aks doctor
+
+      - name: Execute Test Suite
+        run: npm test
