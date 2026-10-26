@@ -435,4 +435,128 @@ it("closes the pool when a commit fails during disposal", async () => {
 });
 
 
+it("propagates errors from ordinary pool queries", async () => {
+  const adapter = createAdapter();
+  const queryError = new Error("Query failed");
+
+  mocks.query.mockRejectedValueOnce(queryError);
+
+  await expect(
+    adapter.query("SELECT * FROM users"),
+  ).rejects.toBe(queryError);
+
+  expect(mocks.query).toHaveBeenCalledWith(
+    "SELECT * FROM users",
+    [],
+  );
+});
+
+it("propagates errors from transactional queries", async () => {
+  configureClient();
+
+  const queryError = new Error("Transactional query failed");
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+    .mockRejectedValueOnce(queryError);
+
+  const transaction = await createAdapter().beginTransaction();
+
+  await expect(
+    transaction.query("SELECT * FROM users WHERE id = $1", [7]),
+  ).rejects.toBe(queryError);
+
+  // A failed query does not automatically finish the transaction.
+  // The caller can still roll it back.
+  await expect(transaction.rollback()).resolves.toBeUndefined();
+
+  expect(mocks.release).toHaveBeenCalledOnce();
+  expect(mocks.clientQuery).toHaveBeenNthCalledWith(
+    2,
+    "SELECT * FROM users WHERE id = $1",
+    [7],
+  );
+  expect(mocks.clientQuery).toHaveBeenNthCalledWith(3, "ROLLBACK");
+});
+
+
+it("prevents concurrent commit and rollback operations", async () => {
+  configureClient();
+
+  let finishCommit!: (result: { rows: never[]; rowCount: number }) => void;
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCommit = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // ROLLBACK
+
+  const transaction = await createAdapter().beginTransaction();
+
+  const commitPromise = transaction.commit();
+
+  // Allow commit() to reach the pending COMMIT query.
+  await Promise.resolve();
+
+  const rollbackPromise = transaction.rollback();
+
+  // ROLLBACK must not be issued while COMMIT is pending.
+  expect(mocks.clientQuery).not.toHaveBeenCalledWith("ROLLBACK");
+
+  finishCommit({ rows: [], rowCount: 0 });
+
+  await commitPromise;
+  await rollbackPromise;
+
+  expect(mocks.clientQuery).toHaveBeenCalledTimes(2);
+  expect(mocks.clientQuery).toHaveBeenCalledWith("COMMIT");
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
+
+it("shares one operation for concurrent commit calls", async () => {
+  configureClient();
+
+  let finishCommit:
+    | ((result: { rows: never[]; rowCount: number }) => void)
+    | undefined;
+
+  // Isolate this test from any queued mock implementations.
+  mocks.clientQuery.mockReset();
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCommit = resolve;
+        }),
+    );
+
+  const transaction = await createAdapter().beginTransaction();
+
+  const firstCommit = transaction.commit();
+  const secondCommit = transaction.commit();
+
+  expect(secondCommit).toBe(firstCommit);
+
+  // Wait for the COMMIT implementation itself to run.
+  await vi.waitFor(() => {
+    expect(finishCommit).toBeTypeOf("function");
+  });
+
+  expect(mocks.clientQuery).toHaveBeenCalledTimes(2);
+  expect(mocks.clientQuery).toHaveBeenLastCalledWith("COMMIT");
+
+  finishCommit!({ rows: [], rowCount: 0 });
+
+  await Promise.all([firstCommit, secondCommit]);
+
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
 });

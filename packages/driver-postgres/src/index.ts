@@ -19,10 +19,15 @@ export interface PostgresDriverSettings {
   connectionTimeoutMillis?: number;
 }
 
+
 class PostgresTransaction implements DatabaseTransaction {
   private finished = false;
+  private completionPromise?: Promise<void>;
 
-  constructor(private readonly client: PoolClient, private readonly onFinish: () => void,) {}
+  constructor(
+    private readonly client: PoolClient,
+    private readonly onFinish: () => void,
+  ) {}
 
   async query<Row = Record<string, unknown>>(
     sql: string,
@@ -41,47 +46,58 @@ class PostgresTransaction implements DatabaseTransaction {
     };
   }
 
-  async commit(): Promise<void> {
-  this.assertActive();
+  commit(): Promise<void> {
+    this.assertActive();
 
-  try {
-    await this.client.query("COMMIT");
-  } catch (error) {
-    this.finish(error instanceof Error ? error : true);
-    throw error;
+    if (this.completionPromise) {
+      return this.completionPromise;
+    }
+
+    this.completionPromise = this.complete("COMMIT");
+    return this.completionPromise;
   }
 
-  this.finish();
-}
+  rollback(): Promise<void> {
+    if (this.finished) {
+      return Promise.resolve();
+    }
 
-  async rollback(): Promise<void> {
-  if (this.finished) {
-    return;
+    if (this.completionPromise) {
+      return this.completionPromise;
+    }
+
+    this.completionPromise = this.complete("ROLLBACK");
+    return this.completionPromise;
   }
 
-  try {
-    await this.client.query("ROLLBACK");
-  } catch (error) {
-    this.finish(error instanceof Error ? error : true);
-    throw error;
+  private async complete(
+    command: "COMMIT" | "ROLLBACK",
+  ): Promise<void> {
+    try {
+      await this.client.query(command);
+    } catch (error) {
+      this.finish(error instanceof Error ? error : true);
+      throw error;
+    }
+
+    this.finish();
   }
 
-  this.finish();
-}
+  private finish(releaseError?: Error | boolean): void {
+    if (this.finished) {
+      return;
+    }
 
-private finish(releaseError?: Error | boolean): void {
-  if(this.finished) {
-    return
-  }
-  this.finished = true;
+    this.finished = true;
 
-  if (releaseError !==undefined) {
-    this.client.release(releaseError);
-  } else {
-    this.client.release();
+    if (releaseError !== undefined) {
+      this.client.release(releaseError);
+    } else {
+      this.client.release();
+    }
+
+    this.onFinish();
   }
-  this.onFinish();
-}
 
   private assertActive(): void {
     if (this.finished) {
@@ -89,7 +105,6 @@ private finish(releaseError?: Error | boolean): void {
     }
   }
 }
-
 
 export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
   readonly capabilities: DatabaseCapabilities & {
