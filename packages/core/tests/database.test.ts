@@ -204,6 +204,20 @@ describe("AKSDatabase", () => {
     expect(mocks.dispose).toHaveBeenCalledOnce();
   });
 
+  it("returns the same promise for repeated disposal calls", () => {
+  const mocks = createMockAdapter();
+  const database = new AKSDatabase({
+    adapter: mocks.adapter,
+  });
+
+  const firstDisposal = database.dispose();
+  const secondDisposal = database.dispose();
+
+  expect(secondDisposal).toBe(firstDisposal);
+
+  return firstDisposal;
+});
+
   it("rejects queries after disposal", async () => {
     const mocks = createMockAdapter();
     const database = new AKSDatabase({

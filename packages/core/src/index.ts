@@ -47,6 +47,11 @@ export {
 } from "./database.js";
 
 export {
+  DatabaseConnectionError,
+  DatabaseDriverRegistry,
+} from "./database-connection.js";
+
+export {
   AKSError,
   BadRequestError,
   UnauthorizedError,
@@ -150,3 +155,8 @@ export type {
   DocumentDatabaseAdapter,
   KeyValueDatabaseAdapter,
 } from "./database.js";
+
+export type {
+  DatabaseDriver,
+  DatabaseConnectionOptions,
+} from "./database-connection.js";

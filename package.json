@@ -4,13 +4,15 @@
   "private": true,
   "workspaces": [
     "packages/core",
-    "packages/cli"
+    "packages/cli",
+    "packages/driver-postgres"
   ],
   "description": "AKS Framework - TypeScript-first Node.js framework",
   "scripts": {
-    "build": "npm run build:core && npm run build:cli",
+    "build": "npm run build:core && npm run build:cli && npm  run build:driver-postgres",
     "build:core": "tsc -p packages/core/tsconfig.json",
     "build:cli": "tsc -p packages/cli/tsconfig.json",
+    "build:driver-postgres": "tsc -p packages/driver-postgres/tsconfig.json",
     "test": "vitest run --pool=threads --maxWorkers=1 --no-file-parallelism",
     "test:watch": "vitest",
     "dev": "tsx examples/hello-api.ts"
