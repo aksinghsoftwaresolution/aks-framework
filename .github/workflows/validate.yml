@@ -31,7 +31,7 @@ jobs:
         run: npm run build
 
       - name: Run Framework Doctor Check
-        run: npx --no-install aks doctor
+        run: ./node_modules/.bin/aks doctor
 
       - name: Execute Test Suite
         run: npm test
