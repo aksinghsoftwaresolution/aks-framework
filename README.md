@@ -1,56 +1,75 @@
 # AKS Framework
 
-AKS Framework is a TypeScript-first backend framework for Node.js. `@aks-framework/core` provides an HTTP runtime, request validation, configuration and environment-file helpers, structured logging, and a dependency-injection container. `@aks-framework/cli` provides project diagnostics, resource generation, and update checks.
+AKS Framework is a TypeScript-first backend framework for Node.js, designed to provide an explicit HTTP runtime, dependency injection, configuration management, structured logging, request validation, database abstractions, and developer tooling.
+
+The monorepo includes `@aks-framework/core`, `@aks-framework/cli`, and the PostgreSQL driver package.
 
 Maintained by **AKSINGH SOFTWARE SOLUTION**.
 
 ## At a Glance
 
-- **Core package:** `@aks-framework/core` `0.1.0`
+- **Core package:** `@aks-framework/core` (`0.1.0`)
+- **CLI package:** `@aks-framework/cli`
+- **Database driver:** PostgreSQL driver package
 - **Runtime:** Node.js built-in HTTP server
-- **Current focus:** HTTP routing and request/response behavior
-- **Tests:** Vitest suites cover core runtime behavior and CLI commands
+- **Language:** TypeScript
+- **Testing:** Vitest
+- **Current focus:** Database integration, PostgreSQL driver reliability, resource lifecycle management, and developer tooling
 - **Status:** Under active development; no formal stability level is declared in package metadata
 
 ## Why AKS?
 
-Backend services commonly need to connect an HTTP server to route dispatch, request parsing, response handling, middleware, and error handling. AKS brings these runtime concerns together behind a small, explicit TypeScript API. It does not remove the need to select or build the other systems an application requires.
+Backend applications need more than an HTTP server. They need predictable request handling, configuration, dependency management, logging, error handling, resource cleanup, and database access.
+
+AKS brings these concerns together through explicit TypeScript APIs and a modular package structure. Its goal is to provide a practical foundation for backend applications while keeping framework behavior understandable and testable.
+
+AKS is under active development. APIs and behavior may change before a stable release.
 
 ## Current Status
 
-AKS Framework is currently under active development. The current release line is `0.1.0`. No formal stability level is declared in package metadata. The repository does not declare a supported Node.js version range.
+The current release line is `0.1.0`. The repository does not declare a supported Node.js version range in package metadata.
 
 | Area | Status | Current scope |
 | --- | --- | --- |
-| HTTP server and routing | Implemented | Node.js HTTP server; `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes. |
-| Request context and parsing | Implemented | Method, path, headers, route params, query values, and JSON body. |
-| Responses and middleware | Implemented | JSON/text helpers, status codes, headers, onion-style middleware, and short-circuiting. |
-| HTTP behavior and error handling | Implemented | `HEAD` through `GET`, automatic `OPTIONS`, default `404`/`405`, and customizable error handling. |
-| Request validation | Implemented | User-provided validators for body, query, and params via `validateRequest()`. |
-| Configuration and environment files | Implemented | Typed value access, diagnostics, and layered `.env` file loading. |
-| Logging and dependency injection | Implemented | Level-filtered logger with console/file transports; transient and singleton providers. |
-| CLI | Implemented | `doctor`, `generate`, and `update`; other advertised commands are placeholders. |
-| Authentication and persistence | Not implemented | No built-in authentication or database abstraction. |
+| HTTP server and routing | Implemented | Node.js HTTP server, static/dynamic/wildcard routes, and supported HTTP methods |
+| Request context and parsing | Implemented | Request method, path, headers, parameters, query values, and JSON body |
+| Responses and middleware | Implemented | JSON/text responses, custom status codes and headers, onion-style middleware, and short-circuiting |
+| HTTP behavior and error handling | Implemented | `HEAD`, automatic `OPTIONS`, `404`/`405`, framework errors, and custom error handling |
+| Request validation | Implemented | Application-provided validators for body, query, and route parameters |
+| Configuration and environment files | Implemented | Configuration access, defaults, diagnostics, and layered `.env` loading |
+| Logging | Implemented | Structured logging with console and file transports |
+| Dependency injection | Implemented | Transient and singleton registrations, circular-dependency detection, and disposable singleton support |
+| Database abstraction | Implemented | Database adapter contract, queries, transactions, and resource lifecycle management |
+| PostgreSQL driver | Implemented | PostgreSQL pool integration, connection verification, queries, transactions, and disposal handling |
+| CLI | Implemented | Diagnostics, resource generation, update checks, health, dependency graph, API contract, and security tooling |
+| Authentication | Not implemented | No built-in authentication system is currently provided |
+
+The repository's test suite currently contains **498 passing tests across 37 test files**. This is a snapshot of the current development state, not a guarantee of production readiness.
 
 ## Features
 
-- HTTP server creation through Node.js `http`.
-- Static, dynamic, and wildcard route matching with static routes preferred over dynamic routes, and dynamic routes preferred over wildcard routes.
-- Query parsing and URL-decoded dynamic and wildcard parameters.
+- HTTP server creation using Node.js `http`.
+- Static, dynamic, and wildcard route matching.
+- Route priority: static routes before dynamic routes, and dynamic routes before wildcard routes.
+- Query parsing and URL-decoded route parameters.
 - JSON request-body parsing and request context.
 - JSON and text response helpers, custom status codes, and response headers.
-- Middleware registration, onion-style execution, short-circuiting, and error propagation.
+- Onion-style middleware execution, short-circuiting, and error propagation.
 - Framework error classes, a default error handler, and a custom error-handler hook.
 - `HEAD` handling through `GET`, automatic `OPTIONS`, and default `404`/`405` handling.
 - Configurable request validation for body, query, and route parameters.
-- Configuration access and environment-file parsing/loading.
+- Configuration access, environment-file parsing, layered environment loading, and diagnostics.
 - Structured logging with console and file transports.
-- A dependency-injection container with transient and singleton registrations.
-- CLI commands for project diagnostics, resource generation, and package update checks.
+- Dependency injection with transient and singleton lifetimes.
+- Database adapter abstractions, query execution, transaction handling, and resource cleanup.
+- PostgreSQL connection pooling and transaction support through the PostgreSQL driver.
+- CLI tooling for diagnostics, resource generation, updates, health, dependency graphs, API contracts, and security checks.
 
 ## Quick Start
 
-This repository currently documents a local-checkout workflow rather than a registry installation. From the repository root, install the dependencies, build the packages, and start the checked-in example:
+This repository currently documents a local-checkout workflow.
+
+From the repository root:
 
 ```bash
 npm install
@@ -58,21 +77,27 @@ npm run build
 npm run dev
 ```
 
-The example imports the built core package from `packages/core/dist` and listens on port `3000`:
+The checked-in example uses the built core package and listens on port `3000`.
+
+Test the example:
 
 ```bash
 curl http://localhost:3000/hello
 ```
 
-It returns JSON similar to:
+Example response:
 
 ```json
-{"message":"Hello from AKS Framework","method":"GET","path":"/hello"}
+{
+  "message": "Hello from AKS Framework",
+  "method": "GET",
+  "path": "/hello"
+}
 ```
 
 ## First Application
 
-After building the core package, save this as `examples/first-app.ts`:
+After building the core package, create `examples/first-app.ts`:
 
 ```ts
 import { AKSApp } from "../packages/core/dist/index.js";
@@ -88,7 +113,7 @@ app.get("/hello", (ctx) => {
 app.listen(3000);
 ```
 
-Run the file with the repository's TypeScript runner:
+Run it with the repository's TypeScript runner:
 
 ```bash
 npx tsx examples/first-app.ts
@@ -98,22 +123,35 @@ npx tsx examples/first-app.ts
 
 ## HTTP and Routing
 
-`AKSApp` registers `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes. Route patterns support static paths such as `/users/me`, dynamic parameters such as `/users/:id`, and wildcard segments such as `/files/*`.
+`AKSApp` registers `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes.
+
+Supported route patterns include:
+
+- Static paths such as `/users/me`.
+- Dynamic parameters such as `/users/:id`.
+- Wildcard paths such as `/files/*`.
+
+Routing behavior:
 
 - Static routes take precedence over dynamic routes; dynamic routes take precedence over wildcard routes.
-- Empty path segments are ignored during matching. Trailing slashes and repeated slashes are therefore effectively normalized.
-- Dynamic parameters are available as `ctx.params.<name>`. Wildcards capture the remaining path as `ctx.params["*"]`.
-- Dynamic and wildcard parameter values are URL-decoded. Invalid percent-encoding raises `BadRequestError` and normally produces the default `400` response.
+- Empty path segments are ignored during matching. Trailing slashes and repeated slashes are effectively normalized.
+- Dynamic parameters are available as `ctx.params.id` or through the corresponding parameter name.
+- Wildcards capture the remaining path as `ctx.params["*"]`.
+- Dynamic and wildcard parameter values are URL-decoded. Invalid percent-encoding raises `BadRequestError` and normally produces HTTP `400`.
 - Wildcard matching stops when the `*` segment is reached. Treat wildcard segments as terminal route patterns.
-- Query values are strings in `ctx.query`. Repeated keys are not arrays; each later occurrence overwrites the previous value.
+- Query values are strings in `ctx.query`. Repeated keys are not represented as arrays; later occurrences overwrite earlier values.
 
 ### `HEAD`, `OPTIONS`, `404`, and `405`
 
-- A `HEAD` request can match a `GET` route. Middleware and the `GET` handler still execute; the response status and headers are produced, but the body is suppressed.
-- `OPTIONS` is handled automatically when the path matches registered routes. The route handler and application middleware are not invoked for the generated response. It has status `204` and an `Allow` header containing the registered methods for matching routes; `GET` contributes `HEAD`, and `OPTIONS` is included.
-- Request-body parsing occurs before `OPTIONS` handling. Malformed JSON can therefore produce `400` instead of the automatic `204` response.
-- An unmatched route normally produces the default `404` response. A custom error handler can change the response. The HTTP layer matches path patterns first, then parses the body before deciding the final route outcome, so malformed JSON can produce `400` instead of `404`.
-- When a path matches but the method does not, the default behavior is `405`. Its `Allow` header contains the registered route methods; it does not automatically add `HEAD` or `OPTIONS`. The automatic `OPTIONS` response uses the different behavior described above. Body parsing occurs before method handling, and a custom error handler can change the final response.
+- A `HEAD` request can match a `GET` route. Middleware and the `GET` handler execute, but the response body is suppressed.
+- `OPTIONS` is handled automatically when the path matches registered routes. The generated response has status `204` and an `Allow` header.
+- The automatic `OPTIONS` response includes registered methods, adds `HEAD` when `GET` is registered, and includes `OPTIONS`.
+- Request-body parsing occurs before automatic `OPTIONS` handling. Malformed JSON can therefore produce `400` instead of `204`.
+- An unmatched route normally produces `404`.
+- When a path matches but the HTTP method is not registered, the default behavior is `405`.
+- The `Allow` header for `405` contains the registered route methods; it does not automatically add `HEAD` or `OPTIONS`.
+- Body parsing occurs before final route dispatch and method handling. Malformed JSON can take precedence over `404`, `405`, or automatic `OPTIONS`.
+- A custom error handler can change the final response.
 
 ## Requests and Responses
 
@@ -127,9 +165,14 @@ The request context exposes:
 - `ctx.body`
 - `ctx.response`
 
-Request bodies are buffered and parsed as JSON regardless of `Content-Type`. No bytes or whitespace-only content produces `undefined`. Malformed JSON raises `BadRequestError` and normally results in HTTP `400`. The HTTP layer first matches path patterns, then parses the body before route dispatch or final method handling. Malformed JSON may therefore take precedence over `404`, `405`, or automatic `OPTIONS`. Other body formats are not parsed by the current core. The JSON parser has no request-body size limit.
+Request bodies are buffered and parsed as JSON regardless of `Content-Type`.
 
-`ctx.response` provides these methods:
+- An empty or whitespace-only body produces `undefined`.
+- Malformed JSON raises `BadRequestError` and normally results in HTTP `400`.
+- Other body formats are not parsed by the current core.
+- The JSON parser does not currently enforce a request-body size limit.
+
+The response helper exposes these methods:
 
 | Method | Behavior |
 | --- | --- |
@@ -138,41 +181,160 @@ Request bodies are buffered and parsed as JSON regardless of `Content-Type`. No 
 | `json(body)` | Produce a `ResponseResult` with JSON content type. |
 | `text(body)` | Produce a `ResponseResult` with plain-text content type. |
 
-Both `json()` and `text()` return a `ResponseResult`. For JSON responses, use an object or array payload: the HTTP sender writes string-valued response bodies directly rather than JSON-quoting them. Ordinary route-handler return values are passed through `JSON.stringify()` by the HTTP layer; an `undefined` result produces an empty response body.
+Both `json()` and `text()` return a `ResponseResult`.
+
+For JSON responses, use object or array payloads when you want JSON serialization. The HTTP sender writes string-valued response bodies directly rather than JSON-quoting them. Ordinary route-handler return values are passed through `JSON.stringify()` by the HTTP layer; an `undefined` result produces an empty response body.
 
 ## Middleware
 
-Register middleware with `app.use()`. Each middleware receives `(ctx, next)`; `next()` returns a promise. Middleware runs in onion order, so code before `await next()` runs before downstream middleware and the route handler, and code after it runs while control returns outward.
+Register middleware with `app.use()`.
 
-Middleware can short-circuit by not calling `next()` and returning a response result. A middleware result is used when downstream has not produced a result.
+Each middleware receives `(ctx, next)`. The `next()` function returns a promise.
 
-Middleware runs only after successful body parsing and route/method matching. It is not invoked for automatic `OPTIONS`, `404`, `405`, or malformed-body responses. Calling `next()` more than once throws an error and enters error handling.
+Middleware follows onion-style execution:
+
+1. Middleware runs before downstream middleware and the route handler.
+2. `await next()` transfers control downstream.
+3. Code after `await next()` runs while control returns outward.
+
+Middleware can short-circuit by not calling `next()` and returning a response result. A middleware result is used when downstream has not already produced a result.
+
+Middleware runs only after successful body parsing and route/method matching. It is not invoked for automatic `OPTIONS`, `404`, `405`, or malformed-body responses.
+
+Calling `next()` more than once throws an error and enters error handling.
 
 ## Request Validation
 
-The core provides a validator interface and `validateRequest()` middleware, but does not include a schema-definition library. Supply validator functions for any combination of request body, query, and route params. A validator returns either `{ success: true, data }` or `{ success: false, issues }`; issues include a source, path, and message, with an optional code.
+The core provides a validator interface and `validateRequest()` middleware, but does not include a schema-definition language.
 
-On success, normalized validator output is stored under `ctx.validated.body`, `ctx.validated.query`, or `ctx.validated.params`. If any validator fails, the middleware throws `ValidationError` with status `422` and the collected issues. Register it with `app.use()` like other middleware.
+Applications supply validator functions for any combination of request body, query, and route parameters.
+
+A validator returns either:
+
+```ts
+{ success: true, data }
+```
+
+or:
+
+```ts
+{ success: false, issues }
+```
+
+Validation issues include a source, path, and message, with an optional code.
+
+On success, normalized output is stored under:
+
+- `ctx.validated.body`
+- `ctx.validated.query`
+- `ctx.validated.params`
+
+If validation fails, the middleware throws `ValidationError` with status `422` and the collected issues.
+
+Register validation with `app.use()` like other middleware.
 
 ## Configuration and Environment Files
 
-`AKSConfig` reads explicitly provided values and environment variables. It supports `get()`, `getOrDefault()`, `require()`, numeric and boolean getters, and configuration diagnostics. Missing required values passed to `require()` throw an error.
+`AKSConfig` reads explicitly provided values and environment variables.
 
-`parseEnv()`, `loadEnvFile()`, and `loadEnvFiles()` are also exported. By default, environment files are loaded in this order: `.env`, `.env.<NODE_ENV>`, `.env.local`, and `.env.<NODE_ENV>.local`; later files override earlier files. `AKSConfig` accepts `envFile` options to customize this behavior and `env` to provide an explicit environment map.
+Its API supports:
+
+- `get()`
+- `getOrDefault()`
+- `require()`
+- Numeric and boolean getters
+- Configuration diagnostics
+- Defaults and explicit environment maps
+- Environment-file configuration
+
+Missing required values passed to `require()` throw an error.
+
+The following helpers are exported:
+
+- `parseEnv()`
+- `loadEnvFile()`
+- `loadEnvFiles()`
+
+By default, environment files are loaded in this order:
+
+1. `.env`
+2. `.env.<NODE_ENV>`
+3. `.env.local`
+4. `.env.<NODE_ENV>.local`
+
+Later files override earlier files. `AKSConfig` accepts `envFile` options to customize environment-file loading and `env` to provide an explicit environment map.
 
 ## Logging
 
-`AKSLogger` supports `debug`, `info`, `warn`, and `error` levels, structured context, and configurable transports. It defaults to the console transport. `ConsoleTransport` and `FileTransport` are included; a custom transport can implement the exported `LogTransport` interface. Pass a logger to `AKSApp` to use it for framework startup and retrieve it with `app.getLogger()`.
+`AKSLogger` supports the following levels:
+
+- `debug`
+- `info`
+- `warn`
+- `error`
+
+It supports structured context and configurable transports.
+
+Included transports:
+
+- `ConsoleTransport`
+- `FileTransport`
+
+Custom transports can implement the exported `LogTransport` interface.
+
+Pass a logger to `AKSApp` to use it for framework logging, and retrieve it with `app.getLogger()`.
 
 ## Dependency Injection
 
-Each `AKSApp` owns a `DIContainer`, available through `app.getContainer()` and `ctx.container`. Register factories with `register()` for transient instances or `registerSingleton()` for cached instances, then resolve them by string or symbol token. The container detects circular dependencies and `dispose()` calls `dispose()` on resolved singleton instances that support it.
+Each `AKSApp` owns a `DIContainer`, available through `app.getContainer()` and `ctx.container`.
+
+The container supports:
+
+- `register()` for transient instances.
+- `registerSingleton()` for cached singleton instances.
+- String and symbol tokens.
+- Dependency resolution.
+- Circular-dependency detection.
+- Disposal of resolved singleton instances that support the disposable lifecycle.
+
+Use dependency injection to separate application services from their construction and manage shared dependencies.
+
+## Database Support
+
+AKS provides a database abstraction in the core package and a PostgreSQL driver in the monorepo.
+
+The abstraction separates framework-level database operations from the underlying database implementation. This allows the core to define a common adapter contract while a driver implements the database-specific behavior.
+
+Current database capabilities include:
+
+- Query execution through the database adapter.
+- Transaction creation.
+- Transaction commit and rollback.
+- Transaction completion and client cleanup.
+- Adapter disposal and resource lifecycle management.
+- PostgreSQL connection pooling.
+- PostgreSQL connection verification.
+- Handling of connection, query, transaction, and pool-disposal failures.
+
+The PostgreSQL driver uses a connection pool and verifies connectivity during connection setup. Transaction completion and disposal behavior have dedicated regression tests, including concurrent operations and failure paths.
+
+### Database testing
+
+The current automated suite includes database abstraction tests and PostgreSQL driver tests. Mock-based tests cover transaction and resource lifecycle behavior without requiring a locally installed PostgreSQL server.
+
+The repository also contains a PostgreSQL driver integration-test file. The existence of an integration-test file does not, by itself, establish that a live external PostgreSQL instance was used during the latest test run.
+
+For application-specific database setup, use the adapter and driver APIs exported by the relevant packages.
 
 ## Error Handling
 
-Register a custom handler with `app.onError(handler)`. The handler receives `(error, ctx)` and is expected to return a valid `ResponseResult`. If it does not, the HTTP layer falls back to a generic `500` response.
+Register a custom handler with `app.onError(handler)`.
 
-`AKSError` contains a `statusCode` and an optional `code`. The exported subclasses are:
+The handler receives `(error, ctx)` and is expected to return a valid `ResponseResult`. If it does not, the HTTP layer falls back to a generic `500` response.
+
+`AKSError` contains a `statusCode` and an optional `code`.
+
+Exported subclasses include:
 
 - `BadRequestError`
 - `UnauthorizedError`
@@ -187,34 +349,91 @@ Register a custom handler with `app.onError(handler)`. The handler receives `(er
 - `ServiceUnavailableError`
 - `GatewayTimeoutError`
 
-The default `handleError(ctx, error)` returns an `AKSError`'s status code and a JSON body containing `error`, `status`, and `code` when present. The `code` field is omitted when unavailable. Unknown errors normally produce HTTP `500` with:
+The default `handleError(ctx, error)` returns an `AKSError`'s status code and a JSON body containing `error`, `status`, and `code` when present. The `code` field is omitted when unavailable.
+
+Unknown errors normally produce HTTP `500` with:
 
 ```json
-{"error":"Internal server error"}
+{
+  "error": "Internal server error"
+}
 ```
 
-`ValidationError` is the error raised for validation failures; the application supplies the actual validator functions.
+`ValidationError` is used for validation failures; the application supplies the actual validator functions.
 
 ## CLI
 
-The `@aks-framework/cli` package exposes the `aks` executable. From a project where it is installed, run:
+The `@aks-framework/cli` package exposes the `aks` executable.
+
+Check available commands:
 
 ```bash
 aks --help
+```
+
+Available command groups include:
+
+- `doctor` — inspect framework/runtime versions, project files, dependencies, and TypeScript setup.
+- `generate` — generate supported application resources.
+- `update` — check for available AKS package updates.
+- `health` — application health tooling.
+- `diagnose` — application and runtime diagnostics.
+- `graph` — inspect the application dependency graph.
+- `contract` — API contract tooling.
+- `security` — application security tooling.
+
+### Doctor
+
+```bash
 aks doctor
+```
+
+Doctor checks project and framework setup. It is read-only by default.
+
+Options include:
+
+- `--json` for machine-readable output.
+- `--fix` for supported repair operations.
+
+JSON mode does not prompt or modify files. Dependency updates offered by supported repair operations remain within the versions requested by `package.json`.
+
+### Generate
+
+Supported generators include:
+
+- `controller`
+- `service`
+- `module`
+- `middleware`
+
+Examples:
+
+```bash
 aks generate controller users
+aks generate service users
+aks generate module users
+aks generate middleware authentication
+```
+
+Generated files go under the corresponding `src/` subdirectories.
+
+Use `--dry-run` to preview file operations and `--force` to overwrite existing files.
+
+### Update
+
+```bash
 aks update --dry-run
 ```
 
-- `doctor` checks framework/runtime versions, project files, dependencies, and TypeScript setup. It is read-only by default. `--json` emits machine-readable output; JSON mode does not prompt or modify files. `--fix` can offer confirmed dependency updates that remain within the versions requested by `package.json`.
-- `generate` supports `controller`, `service`, `module`, and `middleware`. Generated files go under the corresponding `src/` subdirectory. Use `--dry-run` to preview or `--force` to overwrite existing files.
-- `update` checks installed AKS package versions and prints a package-manager command for available updates. It does not install updates; `--dry-run` previews without changing files.
+The update command checks installed AKS package versions and reports available updates. It prints a package-manager command rather than installing updates itself. `--dry-run` previews behavior without changing files.
 
-`diagnose`, `health`, `graph`, `contract`, and `security` currently print that they are not implemented.
+The commands are part of the CLI's current development scope. Their availability does not imply that every diagnostic or analysis capability is production-ready.
 
 ## Core API
 
-The package is named `@aks-framework/core`. Its exports map provides an ESM `import` entry and TypeScript types; it does not define a CommonJS `require` export.
+The core package is named `@aks-framework/core`. Its package exports provide an ESM import entry and TypeScript types; a CommonJS `require` export is not declared.
+
+Important exports include:
 
 | Export | Description |
 | --- | --- |
@@ -226,31 +445,38 @@ The package is named `@aks-framework/core`. Its exports map provides an ESM `imp
 | `parseEnv`, `loadEnvFile`, `loadEnvFiles` | Parse and load `.env` files. |
 | `AKSLogger`, `ConsoleTransport`, `FileTransport` | Structured logging and built-in transports. |
 | `DIContainer` | Register and resolve transient or singleton dependencies. |
-| `validateRequest` | Middleware to run user-provided request validators. |
+| `validateRequest` | Middleware to run application-provided request validators. |
 | `handleError` | Default handler for framework and unknown errors. |
 | `AKSError` and subclasses | Framework error types. |
 | `RequestContext` | Context type passed to handlers and middleware. |
 | `ResponseResult` | Response status, headers, and body shape. |
-| `HTTPMethod` | Registered route method type: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. |
+| `HTTPMethod` | Registered route method type. |
 | `Middleware`, `ErrorHandler`, `Route`, `RouteHandler` | Middleware, error-handler, and route types. |
-| Configuration, validation, logger, transport, environment, and container types | Types for the corresponding APIs. |
+| `AKSDatabase` and database adapter types | Database operations and adapter contracts. |
 | `AKS_VERSION` | Core version constant (`0.1.0`). |
 
 `AKSApp` exposes `get()`, `post()`, `put()`, `patch()`, `delete()`, `use()`, `onError()`, `getRoutes()`, `getMiddlewares()`, `getErrorHandler()`, `getContainer()`, `getLogger()`, and `listen()`.
 
+Refer to the package source and exported TypeScript declarations for the exact signatures of database and driver APIs.
+
 ## Current Limitations
 
-The current core does not provide:
+The current framework does not provide:
 
-- Built-in authentication or database abstraction.
-- A schema-definition language or third-party validation-library integration; validators are supplied by the application.
+- Built-in authentication.
+- A schema-definition language or built-in integration with a specific validation library.
 - Multipart or form-data parsing.
 - A request-body size limit in the JSON parser.
 - A declared Node.js `engines` requirement.
+- A declared formal stability level.
+
+Database access is available through the database abstraction and PostgreSQL driver. This does not mean that every database engine or persistence feature is supported.
 
 ## Where AKS Fits
 
-AKS currently focuses on the Node.js backend/runtime layer: accepting HTTP requests, matching routes, running middleware, and creating responses. Its scope is not a frontend UI framework or frontend build tool.
+AKS focuses on the Node.js backend/runtime layer: accepting HTTP requests, matching routes, executing middleware, validating requests, creating responses, managing dependencies, and providing database access through adapters.
+
+It is not a frontend UI framework or frontend build tool.
 
 ## Development and Tests
 
@@ -264,30 +490,71 @@ npm run test:watch
 npm run dev
 ```
 
-The build script compiles core and CLI packages to their respective `dist` directories. The root TypeScript settings are `target: ES2022`, `module: NodeNext`, `moduleResolution: NodeNext`, and `strict: true`. No Node.js engines requirement is declared in package metadata.
+The build compiles the core, CLI, and PostgreSQL driver packages into their respective `dist` directories.
+
+The root TypeScript configuration uses:
+
+- `target: ES2022`
+- `module: NodeNext`
+- `moduleResolution: NodeNext`
+- `strict: true`
+
+The latest verified full test run passed **498 tests across 37 test files**.
+
+Before submitting changes, run:
+
+```bash
+npm run build
+npm test
+git diff --check
+```
 
 ## Repository Layout
 
 ```text
 examples/
   hello-api.ts
+
 packages/
-  cli/
-    src/       CLI commands and generators
-    tests/     CLI and generator tests
   core/
-    src/       HTTP runtime and supporting framework APIs
-    tests/     Core runtime and API tests
+    src/          HTTP runtime and supporting framework APIs
+    tests/        Core runtime and API tests
+
+  cli/
+    src/          CLI commands and generators
+    tests/        CLI and generator tests
+
+  driver-postgres/
+    src/          PostgreSQL driver implementation
+    tests/        PostgreSQL driver tests
 ```
 
 ## Roadmap
 
-The repository does not define a scheduled release roadmap. Possible future areas are proposals only, not implemented or committed features: a built-in schema-definition API, database abstraction, authentication, testing utilities, plugins, and additional developer tooling.
+AKS is under active development. Future priorities may include:
+
+- Authentication and authorization.
+- Additional database drivers and database tooling.
+- More comprehensive health and diagnostic capabilities.
+- Expanded API contract validation.
+- Additional infrastructure integrations.
+- Further developer tooling and lifecycle management.
+
+These are potential future areas, not promises of scheduled releases. Consult the current repository implementation to determine which capabilities are available.
 
 ## Contributing
 
-Keep changes focused, preserve the explicit TypeScript API, and include tests for behavior changes. Run `npm test` before submitting. Document implemented behavior separately from proposed work.
+Keep changes focused, preserve the explicit TypeScript API, and include tests for behavior changes.
+
+Before submitting a change:
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Run `git diff --check`.
+4. Update documentation when behavior or public APIs change.
+
+Document implemented behavior separately from proposed work.
 
 ## License
 
-AKS Framework is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
+AKS Framework is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
