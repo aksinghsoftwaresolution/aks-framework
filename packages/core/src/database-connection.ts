@@ -1,5 +1,9 @@
+import {
+  AKSDatabase,
+} from "./database.js";
 
 import type {
+  DatabaseAdapter,
   DatabaseAdapterBase,
 } from "./database.js";
 
@@ -26,6 +30,19 @@ export class DatabaseConnectionError extends Error {
     );
 
     this.name = "DatabaseConnectionError";
+    this.driverName = driverName;
+  }
+}
+
+export class DatabaseAdapterCapabilityError extends Error {
+  readonly driverName: string;
+
+  constructor(driverName: string) {
+    super(
+      `Database driver "${driverName}" did not provide a compatible SQL adapter`,
+    );
+
+    this.name = "DatabaseAdapterCapabilityError";
     this.driverName = driverName;
   }
 }
@@ -69,7 +86,7 @@ export class DatabaseDriverRegistry {
     return driver;
   }
 
-  async connect(
+    async connect(
     name: string,
     options: DatabaseConnectionOptions = {},
   ): Promise<DatabaseAdapterBase> {
@@ -80,6 +97,39 @@ export class DatabaseDriverRegistry {
     } catch (error) {
       throw new DatabaseConnectionError(driver.name.trim(), error);
     }
+  }
+
+  async connectDatabase(
+    name: string,
+    options: DatabaseConnectionOptions = {},
+  ): Promise<AKSDatabase> {
+    const driver = this.get(name);
+    const adapter = await this.connect(name, options);
+
+    const isCompatible =
+      adapter.capabilities.sql === true &&
+      typeof (adapter as Partial<DatabaseAdapter>).query === "function" &&
+      typeof (adapter as Partial<DatabaseAdapter>).beginTransaction === "function";
+
+    if (!isCompatible) {
+      try {
+        await adapter.dispose?.();
+      } catch (disposeError) {
+        throw new AggregateError(
+          [
+            new DatabaseAdapterCapabilityError(driver.name.trim()),
+            disposeError,
+          ],
+          "Database adapter validation failed and cleanup also failed",
+        );
+      }
+
+      throw new DatabaseAdapterCapabilityError(driver.name.trim());
+    }
+
+    return new AKSDatabase({
+      adapter: adapter as DatabaseAdapter,
+    });
   }
 
   list(): string[] {

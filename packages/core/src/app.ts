@@ -23,6 +23,7 @@ export interface Route {
   method: HTTPMethod;
   path: string;
   handler: RouteHandler;
+  middlewares: Middleware[];
 }
 
 export interface AKSAppOptions {
@@ -55,55 +56,107 @@ export class AKSApp {
   return this;
 }
 
-  get(path: string, handler: RouteHandler): this {
-    this.routes.push({
-      method: "GET",
-      path,
-      handler,
-    });
+  get(
+  path: string,
+  ...handlers: [...Middleware[], RouteHandler]
+): this {
+  const { middlewares, handler } = this.splitRouteHandlers(handlers);
 
-    return this;
+  this.routes.push({
+    method: "GET",
+    path,
+    middlewares,
+    handler,
+  });
+
+  return this;
+}
+
+  post(
+  path: string,
+  ...handlers: [...Middleware[], RouteHandler]
+): this {
+  const { middlewares, handler } = this.splitRouteHandlers(handlers);
+
+  this.routes.push({
+    method: "POST",
+    path,
+    middlewares,
+    handler,
+  });
+
+  return this;
+}
+
+
+  put(
+  path: string,
+  ...handlers: [...Middleware[], RouteHandler]
+): this {
+  const { middlewares, handler } = this.splitRouteHandlers(handlers);
+
+  this.routes.push({
+    method: "PUT",
+    path,
+    middlewares,
+    handler,
+  });
+
+  return this;
+}
+
+  patch(
+  path: string,
+  ...handlers: [...Middleware[], RouteHandler]
+): this {
+  const { middlewares, handler } = this.splitRouteHandlers(handlers);
+
+  this.routes.push({
+    method: "PATCH",
+    path,
+    middlewares,
+    handler,
+  });
+
+  return this;
+}
+
+  delete(
+  path: string,
+  ...handlers: [...Middleware[], RouteHandler]
+): this {
+  const { middlewares, handler } = this.splitRouteHandlers(handlers);
+
+  this.routes.push({
+    method: "DELETE",
+    path,
+    middlewares,
+    handler,
+  });
+
+  return this;
+}
+
+private splitRouteHandlers(
+  handlers: [...Middleware[], RouteHandler],
+): { middlewares: Middleware[]; handler: RouteHandler } {
+  if (handlers.length === 0) {
+    throw new TypeError("A route handler is required");
   }
 
-  post(path: string, handler: RouteHandler): this {
-    this.routes.push({
-      method: "POST",
-      path,
-      handler,
-    });
+  const lastHandler = handlers[handlers.length - 1];
 
-    return this;
+  if (typeof lastHandler !== "function") {
+    throw new TypeError("The final route argument must be a handler");
   }
 
-  put(path: string, handler: RouteHandler): this {
-    this.routes.push({
-      method: "PUT",
-      path,
-      handler,
-    });
+  const handler = lastHandler as RouteHandler;
 
-    return this;
-  }
-
-  patch(path: string, handler: RouteHandler): this {
-    this.routes.push({
-      method: "PATCH",
-      path,
-      handler,
-    });
-
-    return this;
-  }
-
-  delete(path: string, handler: RouteHandler): this {
-    this.routes.push({
-      method: "DELETE",
-      path,
-      handler,
-    });
-
-    return this;
-  }
+  return {
+    middlewares: handlers.slice(0, -1) as Middleware[],
+    handler,
+  };
+}
 
   getRoutes(): readonly Route[] {
     return this.routes;

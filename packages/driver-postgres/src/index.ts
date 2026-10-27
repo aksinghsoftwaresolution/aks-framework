@@ -20,9 +20,12 @@ export interface PostgresDriverSettings {
 }
 
 
+
 class PostgresTransaction implements DatabaseTransaction {
   private finished = false;
   private completionPromise?: Promise<void>;
+  private activeQueries = 0;
+  private resolveQueriesDrained?: () => void;
 
   constructor(
     private readonly client: PoolClient,
@@ -34,24 +37,35 @@ class PostgresTransaction implements DatabaseTransaction {
     parameters: readonly unknown[] = [],
   ): Promise<DatabaseQueryResult<Row>> {
     this.assertActive();
+    this.activeQueries++;
 
-    const result = await this.client.query<QueryResultRow>(
-      sql,
-      [...parameters],
-    );
+    try {
+      const result = await this.client.query<QueryResultRow>(
+        sql,
+        [...parameters],
+      );
 
-    return {
-      rows: result.rows as Row[],
-      rowCount: result.rowCount ?? 0,
-    };
+      return {
+        rows: result.rows as Row[],
+        rowCount: result.rowCount ?? 0,
+      };
+    } finally {
+      this.activeQueries--;
+
+      if (this.activeQueries === 0) {
+        this.resolveQueriesDrained?.();
+        this.resolveQueriesDrained = undefined;
+      }
+    }
   }
 
+  
   commit(): Promise<void> {
-    this.assertActive();
-
     if (this.completionPromise) {
       return this.completionPromise;
     }
+
+    this.assertActive();
 
     this.completionPromise = this.complete("COMMIT");
     return this.completionPromise;
@@ -74,6 +88,7 @@ class PostgresTransaction implements DatabaseTransaction {
     command: "COMMIT" | "ROLLBACK",
   ): Promise<void> {
     try {
+      await this.waitForQueriesToDrain();
       await this.client.query(command);
     } catch (error) {
       this.finish(error instanceof Error ? error : true);
@@ -83,10 +98,18 @@ class PostgresTransaction implements DatabaseTransaction {
     this.finish();
   }
 
-  private finish(releaseError?: Error | boolean): void {
-    if (this.finished) {
+  private async waitForQueriesToDrain(): Promise<void> {
+    if (this.activeQueries === 0) {
       return;
     }
+
+    await new Promise<void>((resolve) => {
+      this.resolveQueriesDrained = resolve;
+    });
+  }
+
+  private finish(releaseError?: Error | boolean): void {
+    if (this.finished) return;
 
     this.finished = true;
 
@@ -100,7 +123,7 @@ class PostgresTransaction implements DatabaseTransaction {
   }
 
   private assertActive(): void {
-    if (this.finished) {
+    if (this.finished || this.completionPromise) {
       throw new Error("PostgreSQL transaction has already finished");
     }
   }
@@ -121,6 +144,9 @@ export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
   private readonly activeTransactions = new Set<symbol>();
   private resolveTransactionsDrained?: () => void;
 
+  private activeQueries = 0;
+  private resolveQueriesDrained?: () => void;
+
   constructor(private readonly pool: Pool) {}
 
   async query<Row = Record<string, unknown>>(
@@ -128,7 +154,9 @@ export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
     parameters: readonly unknown[] = [],
   ): Promise<DatabaseQueryResult<Row>> {
     this.assertActive();
+    this.activeQueries++;
 
+    try {
     const result = await this.pool.query<QueryResultRow>(
       sql,
       [...parameters],
@@ -138,6 +166,13 @@ export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
       rows: result.rows as Row[],
       rowCount: result.rowCount ?? 0,
     };
+  } finally {
+    this.activeQueries--;
+    if (this.activeQueries === 0) {
+      this.resolveQueriesDrained?.();
+      this.resolveQueriesDrained = undefined;
+    }
+  }
   }
 
   async beginTransaction(): Promise<DatabaseTransaction> {
@@ -186,6 +221,11 @@ export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
   }
 
   private async closeWhenTransactionsFinish(): Promise<void> {
+    if (this.activeQueries > 0) {
+      await new Promise<void>((resolve) => {
+        this.resolveQueriesDrained = resolve;
+      });
+    }
     if (this.activeTransactions.size > 0) {
       await new Promise<void>((resolve) => {
         this.resolveTransactionsDrained = resolve;

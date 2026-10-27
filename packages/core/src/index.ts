@@ -24,6 +24,23 @@ export {
   AKSLogger,
 } from "./logger.js";
 
+export {
+  createAuthenticationMiddleware,
+} from "./auth/authentication-middleware.js";
+
+export {
+  createAuthorizationMiddleware,
+} from "./auth/authorization-middleware.js";
+
+export {
+  BearerTokenStrategy,
+} from "./auth/bearer-token-strategy.js";
+
+export {
+  requireRole,
+  requirePermission,
+} from "./auth/policies.js";
+
 export type {
   AKSAppOptions,
   HTTPMethod,
@@ -49,6 +66,7 @@ export {
 export {
   DatabaseConnectionError,
   DatabaseDriverRegistry,
+  DatabaseAdapterCapabilityError,
 } from "./database-connection.js";
 
 export {
@@ -160,3 +178,31 @@ export type {
   DatabaseDriver,
   DatabaseConnectionOptions,
 } from "./database-connection.js";
+
+export type {
+  AuthenticationOptions,
+} from "./auth/authentication-middleware.js";
+
+export type {
+  AuthUser,
+  AuthResult,
+  AuthStrategy,
+} from "./auth/types.js";
+
+export type {
+  AuthorizationOptions,
+  AuthorizationPolicy,
+} from "./auth/authorization-middleware.js";
+
+export type {
+  RoleResolver,
+  PermissionResolver,
+} from "./auth/policies.js";
+
+export type {
+  BearerTokenVerifier,
+} from "./auth/bearer-token-strategy.js";
+
+export {
+  extractBearerToken,
+} from "./auth/authentication-middleware.js";

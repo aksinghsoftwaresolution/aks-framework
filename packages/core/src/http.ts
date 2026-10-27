@@ -5,7 +5,7 @@ import {
 } from "node:http";
 
 import { parseJSONBody } from "./body.js";
-import type { AKSApp } from "./app.js";
+import type { AKSApp, Middleware } from "./app.js";
 import type { RequestContext } from "./context.js";
 import { handleError } from "./error-handler.js";
 import {
@@ -190,6 +190,7 @@ export function createHTTPServer(app: AKSApp) {
       | {
           handler: (ctx: RequestContext) => unknown | Promise<unknown>;
           params: Record<string, string>;
+          middlewares: Middleware[];
         }
       | null = null;
 
@@ -243,6 +244,7 @@ for (const route of routes) {
           matchedRoute = {
             handler: route.handler,
             params: match.params,
+            middlewares: route.middlewares,
           };
         }
       }
@@ -295,7 +297,7 @@ if (!matchedRoute) {
 
       let result: unknown;
 
-      const middlewares = app.getMiddlewares();
+      const middlewares = [...app.getMiddlewares(), ...matchedRoute.middlewares,]
 
       let middlewareIndex = -1;
 

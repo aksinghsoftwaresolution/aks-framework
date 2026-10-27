@@ -8,10 +8,13 @@ import {
 import {
   DatabaseConnectionError,
   DatabaseDriverRegistry,
+  DatabaseAdapterCapabilityError,
 } from "../src/database-connection.js";
 
 import type {
+  DatabaseAdapter,
   DatabaseAdapterBase,
+  DatabaseTransaction,
 } from "../src/database.js";
 
 function createAdapter(): DatabaseAdapterBase {
@@ -19,6 +22,28 @@ function createAdapter(): DatabaseAdapterBase {
     capabilities: {
       sql: true,
     },
+  };
+}
+
+function createSQLAdapter(): DatabaseAdapter {
+  return {
+    capabilities: {
+      sql: true,
+      transactions: true,
+    },
+    query: vi.fn().mockResolvedValue({
+      rows: [{ value: 1 }],
+      rowCount: 1,
+    }),
+    beginTransaction: vi.fn().mockResolvedValue({
+      query: vi.fn().mockResolvedValue({
+        rows: [],
+        rowCount: 0,
+      }),
+      commit: vi.fn(),
+      rollback: vi.fn(),
+    } satisfies DatabaseTransaction),
+    dispose: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -36,6 +61,27 @@ describe("DatabaseDriverRegistry", () => {
     expect(registry.has("test")).toBe(true);
     expect(registry.get("test")).toBe(driver);
     expect(registry.list()).toEqual(["test"]);
+  });
+
+      it("connects and returns a usable AKSDatabase", async () => {
+    const adapter = createSQLAdapter();
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "postgres",
+      connect: vi.fn().mockResolvedValue(adapter),
+    });
+
+    const database = await registry.connectDatabase("postgres");
+
+    await expect(database.query("SELECT 1")).resolves.toEqual({
+      rows: [{ value: 1 }],
+      rowCount: 1,
+    });
+
+    expect(adapter.query).toHaveBeenCalledWith("SELECT 1", []);
+    await database.dispose();
+    expect(adapter.dispose).toHaveBeenCalledOnce();
   });
 
   it("normalizes whitespace around driver names", () => {
@@ -63,6 +109,17 @@ describe("DatabaseDriverRegistry", () => {
     ).toThrow("Database driver name must not be empty");
   });
 
+    it("creates DatabaseAdapterCapabilityError with driver details", () => {
+    const error = new DatabaseAdapterCapabilityError("postgres");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("DatabaseAdapterCapabilityError");
+    expect(error.driverName).toBe("postgres");
+    expect(error.message).toBe(
+      'Database driver "postgres" did not provide a compatible SQL adapter',
+    );
+  });
+
   it("rejects duplicate driver names", () => {
     const registry = new DatabaseDriverRegistry();
 
@@ -76,6 +133,73 @@ describe("DatabaseDriverRegistry", () => {
     expect(() => registry.register(driver)).toThrow(
       'Database driver "test" is already registered',
     );
+  });
+    it("rejects an incompatible SQL adapter and disposes it", async () => {
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    const adapter: DatabaseAdapterBase = {
+      capabilities: {
+        sql: true,
+      },
+      dispose,
+    };
+
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "test",
+      connect: vi.fn().mockResolvedValue(adapter),
+    });
+
+    await expect(
+      registry.connectDatabase("test"),
+    ).rejects.toMatchObject({
+      name: "DatabaseAdapterCapabilityError",
+      driverName: "test",
+    });
+
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+    it("wraps connection failures from connectDatabase", async () => {
+    const originalError = new Error("Connection refused");
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "postgres",
+      connect: vi.fn().mockRejectedValue(originalError),
+    });
+
+    await expect(
+      registry.connectDatabase("postgres"),
+    ).rejects.toMatchObject({
+      name: "DatabaseConnectionError",
+      driverName: "postgres",
+      cause: originalError,
+    });
+  });
+
+  it("preserves the capability error when adapter cleanup fails", async () => {
+    const disposeError = new Error("Cleanup failed");
+    const adapter: DatabaseAdapterBase = {
+      capabilities: {
+        sql: false,
+      },
+      dispose: vi.fn().mockRejectedValue(disposeError),
+    };
+
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "test",
+      connect: vi.fn().mockResolvedValue(adapter),
+    });
+
+    await expect(
+      registry.connectDatabase("test"),
+    ).rejects.toMatchObject({
+      name: "AggregateError",
+      message: "Database adapter validation failed and cleanup also failed",
+    });
   });
 
   it("throws when resolving an unknown driver", () => {

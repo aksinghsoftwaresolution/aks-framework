@@ -50,6 +50,274 @@ describe("HTTP routing", () => {
     }
   });
 
+  it("executes route-specific middleware before the route handler", async () => {
+  const app = new AKSApp();
+  const executionOrder: string[] = [];
+
+  const routeMiddleware = async (
+    _ctx: Parameters<Controller>[0],
+    next: () => Promise<void>,
+  ) => {
+    executionOrder.push("route-middleware-before");
+    await next();
+    executionOrder.push("route-middleware-after");
+  };
+
+  app.get("/route-middleware", routeMiddleware, async () => {
+    executionOrder.push("handler");
+    return { message: "ok" };
+  });
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/route-middleware`,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ message: "ok" });
+    expect(executionOrder).toEqual([
+      "route-middleware-before",
+      "handler",
+      "route-middleware-after",
+    ]);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+it("runs global middleware before route-specific middleware", async () => {
+  const app = new AKSApp();
+  const executionOrder: string[] = [];
+
+  app.use(async (_ctx, next) => {
+    executionOrder.push("global-before");
+    await next();
+    executionOrder.push("global-after");
+  });
+
+  const routeMiddleware = async (
+    _ctx: Parameters<Controller>[0],
+    next: () => Promise<void>,
+  ) => {
+    executionOrder.push("route-before");
+    await next();
+    executionOrder.push("route-after");
+  };
+
+  app.get("/middleware-order", routeMiddleware, async () => {
+    executionOrder.push("handler");
+    return { message: "ok" };
+  });
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/middleware-order`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(executionOrder).toEqual([
+      "global-before",
+      "route-before",
+      "handler",
+      "route-after",
+      "global-after",
+    ]);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+it("executes multiple route-specific middleware in registration order", async () => {
+  const app = new AKSApp();
+  const executionOrder: string[] = [];
+
+  const first = async (
+    _ctx: Parameters<Controller>[0],
+    next: () => Promise<void>,
+  ) => {
+    executionOrder.push("first-before");
+    await next();
+    executionOrder.push("first-after");
+  };
+
+  const second = async (
+    _ctx: Parameters<Controller>[0],
+    next: () => Promise<void>,
+  ) => {
+    executionOrder.push("second-before");
+    await next();
+    executionOrder.push("second-after");
+  };
+
+  app.get("/multiple-middleware", first, second, async () => {
+    executionOrder.push("handler");
+    return { message: "ok" };
+  });
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/multiple-middleware`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(executionOrder).toEqual([
+      "first-before",
+      "second-before",
+      "handler",
+      "second-after",
+      "first-after",
+    ]);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+it("allows route-specific middleware to short-circuit the handler", async () => {
+  const app = new AKSApp();
+  let handlerExecuted = false;
+
+  const authMiddleware = async (
+    ctx: Parameters<Controller>[0],
+    _next: () => Promise<void>,
+  ) => {
+    return ctx.response.status(401).json({
+      error: "Unauthorized",
+    });
+  };
+
+  app.get("/route-protected", authMiddleware, async () => {
+    handlerExecuted = true;
+    return { message: "should not execute" };
+  });
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/route-protected`,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unauthorized",
+    });
+    expect(handlerExecuted).toBe(false);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+it("propagates route-specific middleware errors to the error handler", async () => {
+  const app = new AKSApp();
+
+  const failingMiddleware = async () => {
+    throw new Error("route middleware failure");
+  };
+
+  app.get("/route-middleware-error", failingMiddleware, async () => ({
+    message: "should not execute",
+  }));
+
+  app.onError((error, ctx) => {
+    expect((error as Error).message).toBe("route middleware failure");
+    return ctx.response.status(500).json({
+      error: "route middleware error handled",
+    });
+  });
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/route-middleware-error`,
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "route middleware error handled",
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+it("continues to support routes without route-specific middleware", async () => {
+  const app = new AKSApp();
+
+  app.get("/no-route-middleware", async () => ({
+    message: "works",
+  }));
+
+  const server = createHTTPServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to determine server address");
+  }
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/no-route-middleware`,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      message: "works",
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
   it("matches a dynamic route parameter", async () => {
     const app = new AKSApp();
 
@@ -1390,6 +1658,5 @@ it("exposes its dependency injection container", () => {
       });
     }
   });
-
 
 });

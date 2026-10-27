@@ -594,4 +594,151 @@ it("shares one operation for concurrent commit calls", async () => {
 
     expect(mocks.end).toHaveBeenCalledOnce();
   });
+
+  
+it("waits for an active query before committing a transaction", async () => {
+  configureClient();
+
+  let finishQuery!: (result: {
+    rows: { id: number }[];
+    rowCount: number;
+  }) => void;
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishQuery = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+
+  const transaction = await createAdapter().beginTransaction();
+
+  const queryPromise = transaction.query<{ id: number }>(
+    "SELECT 1 AS id",
+  );
+
+  await vi.waitFor(() => {
+    expect(finishQuery).toBeTypeOf("function");
+  });
+
+  const commitPromise = transaction.commit();
+
+  expect(mocks.clientQuery).not.toHaveBeenCalledWith("COMMIT");
+
+  finishQuery({ rows: [{ id: 1 }], rowCount: 1 });
+
+  await expect(queryPromise).resolves.toEqual({
+    rows: [{ id: 1 }],
+    rowCount: 1,
+  });
+
+  await commitPromise;
+
+  expect(mocks.clientQuery).toHaveBeenCalledWith("COMMIT");
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
+
+it("waits for an active ordinary query before closing the pool", async () => {
+  let finishQuery!: (result: {
+    rows: { id: number }[];
+    rowCount: number;
+  }) => void;
+
+  mocks.query.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishQuery = resolve;
+      }),
+  );
+
+  const adapter = createAdapter();
+
+  const queryPromise = adapter.query<{ id: number }>(
+    "SELECT 1 AS id",
+  );
+
+  await vi.waitFor(() => {
+    expect(finishQuery).toBeTypeOf("function");
+  });
+
+  const disposePromise = adapter.dispose();
+
+  // The pool must remain open while the query is in progress.
+  expect(mocks.end).not.toHaveBeenCalled();
+
+  finishQuery({
+    rows: [{ id: 1 }],
+    rowCount: 1,
+  });
+
+  await expect(queryPromise).resolves.toEqual({
+    rows: [{ id: 1 }],
+    rowCount: 1,
+  });
+
+  await disposePromise;
+
+  expect(mocks.end).toHaveBeenCalledOnce();
+});
+
+
+it("waits for ordinary queries and transactions before closing the pool", async () => {
+  configureClient();
+
+  let finishQuery!: (result: {
+    rows: { id: number }[];
+    rowCount: number;
+  }) => void;
+
+  mocks.query.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishQuery = resolve;
+      }),
+  );
+
+  mocks.clientQuery.mockResolvedValue({
+    rows: [],
+    rowCount: 0,
+  });
+
+  const adapter = createAdapter();
+
+  const queryPromise = adapter.query<{ id: number }>(
+    "SELECT 1 AS id",
+  );
+
+  await vi.waitFor(() => {
+    expect(finishQuery).toBeTypeOf("function");
+  });
+
+  const transaction = await adapter.beginTransaction();
+  const disposePromise = adapter.dispose();
+
+  expect(mocks.end).not.toHaveBeenCalled();
+
+  await transaction.rollback();
+
+  // The ordinary query is still pending, so the pool must remain open.
+  expect(mocks.end).not.toHaveBeenCalled();
+
+  finishQuery({
+    rows: [{ id: 1 }],
+    rowCount: 1,
+  });
+
+  await expect(queryPromise).resolves.toEqual({
+    rows: [{ id: 1 }],
+    rowCount: 1,
+  });
+
+  await disposePromise;
+
+  expect(mocks.end).toHaveBeenCalledOnce();
+});
+
 });

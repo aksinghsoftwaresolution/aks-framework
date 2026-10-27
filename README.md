@@ -634,6 +634,17 @@ Before submitting a change:
 
 Document implemented behavior separately from proposed work.
 
+## ❤️ Support the Project
+
+If the AKS Framework has saved you time or helped you build your application, please consider supporting its ongoing development! Your sponsorship helps cover maintenance costs, new features, and faster bug fixes.
+
+You can fund this project through the following platforms:
+
+*   **[Sponsor us on GitHub](https://github.com/sponsors/aksinghsoftwaresolution)**
+*   **[Support us on thanks.dev](https://thanks.dev/gh/aksinghsoftwaresolution)**
+
+Thank you for supporting open-source software!
+
 ## License
 
 AKS Framework is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
