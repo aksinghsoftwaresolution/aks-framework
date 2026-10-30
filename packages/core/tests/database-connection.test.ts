@@ -393,4 +393,70 @@ describe("DatabaseDriverRegistry", () => {
     expect(registry.has("test")).toBe(true);
   });
 
+  
+  it("forwards connection options through connectDatabase", async () => {
+    const adapter = createSQLAdapter();
+    const connect = vi.fn().mockResolvedValue(adapter);
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "postgres",
+      connect,
+    });
+
+    const options = {
+      connectionString: "postgres://localhost/test",
+      settings: { poolSize: 5 },
+    };
+
+    const database = await registry.connectDatabase(
+      "postgres",
+      options,
+    );
+
+    expect(connect).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledWith(options);
+    expect(database).toBeInstanceOf(
+      (await import("../src/database.js")).AKSDatabase,
+    );
+
+    await database.dispose();
+  });
+
+  it("preserves both errors when adapter validation and cleanup fail", async () => {
+    const disposeError = new Error("Cleanup failed");
+    const adapter: DatabaseAdapterBase = {
+      capabilities: { sql: true },
+      dispose: vi.fn().mockRejectedValue(disposeError),
+    };
+
+    const registry = new DatabaseDriverRegistry();
+
+    registry.register({
+      name: "postgres",
+      connect: vi.fn().mockResolvedValue(adapter),
+    });
+
+    let caughtError: unknown;
+
+    try {
+      await registry.connectDatabase("postgres");
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toBeInstanceOf(AggregateError);
+
+    const aggregateError = caughtError as AggregateError;
+
+    expect(aggregateError.message).toBe(
+      "Database adapter validation failed and cleanup also failed",
+    );
+    expect(aggregateError.errors).toHaveLength(2);
+    expect(aggregateError.errors[0]).toBeInstanceOf(
+      DatabaseAdapterCapabilityError,
+    );
+    expect(aggregateError.errors[1]).toBe(disposeError);
+  });
+
 });

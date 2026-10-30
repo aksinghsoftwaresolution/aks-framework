@@ -73,6 +73,8 @@ export {
   AKSError,
   BadRequestError,
   UnauthorizedError,
+  AuthenticationError,
+  AuthorizationError,
   ForbiddenError,
   NotFoundError,
   MethodNotAllowedError,

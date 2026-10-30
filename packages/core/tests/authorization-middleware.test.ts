@@ -91,4 +91,24 @@ describe("createAuthorizationMiddleware", () => {
 
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("rejects non-boolean authorization policy results", async () => {
+  const ctx = createContext({ id: "user-1" });
+ctx.auth = { id: "user-1" };
+
+  const next = vi.fn();
+
+  const middleware = createAuthorizationMiddleware({
+    policy: async () => "false" as unknown as boolean,
+  });
+
+  await expect(middleware(ctx, next)).rejects.toMatchObject({
+    name: "AuthorizationError",
+    statusCode: 500,
+    code: "AUTHORIZATION_POLICY_ERROR",
+  });
+
+  expect(next).not.toHaveBeenCalled();
+});
+
 });

@@ -127,6 +127,89 @@ describe("HTTP authentication integration", () => {
     });
   });
 
+  it("returns 401 when authorization runs without authentication", async () => {
+  const app = new AKSApp();
+
+  app.use(
+    createAuthorizationMiddleware({
+      policy: () => true,
+    }),
+  );
+
+  app.get("/protected", async () => ({
+    message: "Should not be reached",
+  }));
+
+  const baseUrl = await startServer(app);
+
+  const response = await fetch(`${baseUrl}/protected`);
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    code: "UNAUTHORIZED",
+    status: 401,
+  });
+});
+
+it("protects a route using route-specific authentication and authorization middleware", async () => {
+  const app = new AKSApp();
+
+  const strategy = new BearerTokenStrategy((token) => {
+    if (token !== "valid-token") {
+      return null;
+    }
+
+    return {
+      user: {
+        id: "user-123",
+        attributes: {
+          permissions: ["reports:read"],
+        },
+      },
+    };
+  });
+
+  app.get(
+    "/protected",
+    createAuthenticationMiddleware(strategy, {
+      extractCredentials: extractBearerToken,
+    }),
+    createAuthorizationMiddleware({
+      policy: requirePermission(
+        "reports:read",
+        (user) => {
+          const permissions = user.attributes?.permissions;
+
+          return Array.isArray(permissions)
+            ? permissions.filter(
+                (permission): permission is string =>
+                  typeof permission === "string",
+              )
+            : [];
+        },
+      ),
+    }),
+    async (ctx) => ({
+      message: "Authenticated",
+      userId: ctx.auth?.id,
+    }),
+  );
+
+  const baseUrl = await startServer(app);
+
+  const response = await fetch(`${baseUrl}/protected`, {
+    headers: {
+      Authorization: "Bearer valid-token",
+    },
+  });
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    message: "Authenticated",
+    userId: "user-123",
+  });
+});
+
   it("returns 401 when the Bearer header is malformed", async () => {
     const baseUrl = await startServer(createTestApp());
 

@@ -75,4 +75,27 @@ describe("BearerTokenStrategy", () => {
       strategy.authenticate("valid-token"),
     ).rejects.toBe(error);
   });
+
+  it("rejects whitespace-only tokens without calling the verifier", async () => {
+  const verifyToken = vi.fn().mockResolvedValue(result);
+  const strategy = new BearerTokenStrategy(verifyToken);
+
+  await expect(
+    strategy.authenticate("   "),
+  ).resolves.toBeNull();
+
+  expect(verifyToken).not.toHaveBeenCalled();
+});
+
+it("trims the token before verification", async () => {
+  const verifyToken = vi.fn().mockResolvedValue(result);
+  const strategy = new BearerTokenStrategy(verifyToken);
+
+  await expect(
+    strategy.authenticate("  valid-token  "),
+  ).resolves.toEqual(result);
+
+  expect(verifyToken).toHaveBeenCalledWith("valid-token");
+});
+
 });

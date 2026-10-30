@@ -118,6 +118,26 @@ export class InternalServerError extends AKSError {
   }
 }
 
+export class AuthenticationError extends InternalServerError {
+  constructor(
+    message = "Authentication provider returned an invalid result",
+    code = "AUTHENTICATION_PROVIDER_ERROR",
+  ) {
+    super(message, code);
+    this.name = "AuthenticationError";
+  }
+}
+
+export class AuthorizationError extends InternalServerError {
+  constructor(
+    message = "Authorization policy returned an invalid result",
+    code = "AUTHORIZATION_POLICY_ERROR",
+  ) {
+    super(message, code);
+    this.name = "AuthorizationError";
+  }
+}
+
 export class BadGatewayError extends AKSError {
   constructor(
     message = "Bad gateway",

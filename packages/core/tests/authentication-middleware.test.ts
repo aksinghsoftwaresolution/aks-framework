@@ -189,4 +189,212 @@ describe("createAuthenticationMiddleware", () => {
     expect(strategy.authenticate).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
+
+    it.each([
+  undefined,
+  {},
+  { user: null },
+  { user: {} },
+  { user: { id: "" } },
+  { user: { id: "   " } },
+  { user: { id: 123 } },
+  { user: { id: "user-123", attributes: null } },
+  { user: { id: "user-123", attributes: [] } },
+  { user: new Date() },
+  {
+    user: new (class {
+      id = "user-123";
+    })(),
+  },
+  {
+    user: {
+      id: "user-123",
+      attributes: new Date(),
+    },
+  },
+] as unknown[])(
+  "rejects malformed authentication result: %j",
+  async (result) => {
+    const strategy: AuthStrategy = {
+      name: "test",
+      authenticate: vi.fn().mockResolvedValue(result),
+    };
+
+    const next = vi.fn(async () => {});
+    const middleware = createAuthenticationMiddleware(strategy, {
+      extractCredentials: () => "valid-token",
+    });
+
+    await expect(
+      middleware(createContext(), next),
+    ).rejects.toMatchObject({
+      statusCode: 500,
+      code: "AUTHENTICATION_PROVIDER_ERROR",
+    });
+
+    expect(next).not.toHaveBeenCalled();
+  },
+);
+
+  it("returns 401 when the strategy rejects validly formatted credentials", async () => {
+    const strategy: AuthStrategy = {
+      name: "test",
+      authenticate: vi.fn().mockResolvedValue(null),
+    };
+
+    const middleware = createAuthenticationMiddleware(strategy, {
+      extractCredentials: () => "invalid-token",
+    });
+
+    await expect(
+      middleware(createContext(), vi.fn(async () => {})),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  it("creates an immutable copy of the authenticated user", async () => {
+  const user = {
+    id: "user-123",
+    attributes: {
+      role: "admin",
+      permissions: ["reports:read"],
+    },
+  };
+
+  const strategy: AuthStrategy = {
+    name: "test",
+    authenticate: vi.fn().mockResolvedValue({ user }),
+  };
+
+  const ctx = createContext();
+  const middleware = createAuthenticationMiddleware(strategy, {
+    extractCredentials: () => "valid-token",
+  });
+
+  await middleware(ctx, vi.fn(async () => {}));
+
+  expect(ctx.auth).not.toBe(user);
+  expect(ctx.auth?.attributes).not.toBe(user.attributes);
+  expect(Object.isFrozen(ctx.auth)).toBe(true);
+  expect(Object.isFrozen(ctx.auth?.attributes)).toBe(true);
+
+  expect(user.id).toBe("user-123");
+  expect(user.attributes.role).toBe("admin");
+  expect(Object.isFrozen(user)).toBe(false);
+  expect(Object.isFrozen(user.attributes)).toBe(false);
+});
+
+it("does not allow mutation of authenticated identity fields", async () => {
+  const strategy: AuthStrategy = {
+    name: "test",
+    authenticate: vi.fn().mockResolvedValue({
+      user: {
+        id: "user-123",
+        attributes: { role: "admin" },
+      },
+    }),
+  };
+
+  const ctx = createContext();
+  const middleware = createAuthenticationMiddleware(strategy, {
+    extractCredentials: () => "valid-token",
+  });
+
+  await middleware(ctx, vi.fn(async () => {}));
+
+  expect(() => {
+    Object.assign(ctx.auth!, { id: "attacker" });
+  }).toThrow(TypeError);
+
+  expect(() => {
+    Object.assign(ctx.auth!.attributes!, { role: "user" });
+  }).toThrow(TypeError);
+
+  expect(ctx.auth?.id).toBe("user-123");
+  expect(ctx.auth?.attributes?.role).toBe("admin");
+});
+
+it("prevents mutation of nested permission arrays in authenticated attributes", async () => {
+  const strategy: AuthStrategy = {
+    name: "test",
+    authenticate: vi.fn().mockResolvedValue({
+      user: {
+        id: "user-123",
+        attributes: {
+          permissions: ["reports:read"],
+        },
+      },
+    }),
+  };
+
+  const ctx = createContext();
+  const middleware = createAuthenticationMiddleware(strategy, {
+    extractCredentials: () => "valid-token",
+  });
+
+  await middleware(ctx, vi.fn(async () => {}));
+
+  expect(() => {
+    (ctx.auth?.attributes?.permissions as string[]).push("admin:all");
+  }).toThrow(TypeError);
+
+  expect(ctx.auth?.attributes?.permissions).toEqual(["reports:read"]);
+});
+
+it("preserves circular references when copying authenticated attributes", async () => {
+  const attributes: Record<string, unknown> = {};
+  attributes.self = attributes;
+
+  const strategy: AuthStrategy = {
+    name: "test",
+    authenticate: vi.fn().mockResolvedValue({
+      user: {
+        id: "user-123",
+        attributes,
+      },
+    }),
+  };
+
+  const ctx = createContext();
+  const middleware = createAuthenticationMiddleware(strategy, {
+    extractCredentials: () => "valid-token",
+  });
+
+  await middleware(ctx, vi.fn(async () => {}));
+
+  expect(ctx.auth?.attributes).not.toBe(attributes);
+  expect(ctx.auth?.attributes?.self).toBe(ctx.auth?.attributes);
+  expect(Object.isFrozen(ctx.auth?.attributes)).toBe(true);
+  expect(attributes.self).toBe(attributes);
+  expect(Object.isFrozen(attributes)).toBe(false);
+});
+
+it("accepts a null-prototype authentication user", async () => {
+  const user = Object.assign(
+    Object.create(null),
+    { id: "user-123" },
+  );
+
+  const strategy: AuthStrategy = {
+    name: "test",
+    authenticate: vi.fn().mockResolvedValue({ user }),
+  };
+
+  const ctx = createContext();
+  const next = vi.fn(async () => {});
+
+  const middleware = createAuthenticationMiddleware(strategy, {
+    extractCredentials: () => "valid-token",
+  });
+
+  await middleware(ctx, next);
+
+  expect(ctx.auth).toMatchObject({
+    id: "user-123",
+  });
+  expect(next).toHaveBeenCalledOnce();
+});
+
 });

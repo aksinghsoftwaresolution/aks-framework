@@ -1,6 +1,17 @@
-
 import type { AuthResult, AuthStrategy } from "./types.js";
 
+/**
+ * Verifies a bearer token and resolves the authenticated user.
+ *
+ * Implementations are responsible for cryptographically verifying the
+ * token and validating all relevant claims, including expiration,
+ * issuer, audience, and permitted signing algorithms.
+ *
+ * Do not use an unverified token payload to construct an AuthResult.
+ *
+ * Return null when the token is invalid. Throw an error when verification
+ * cannot be completed because of an operational failure.
+ */
 export type BearerTokenVerifier = (
   token: string,
 ) => AuthResult | null | Promise<AuthResult | null>;
@@ -15,10 +26,16 @@ export class BearerTokenStrategy implements AuthStrategy {
   async authenticate(
     credentials: unknown,
   ): Promise<AuthResult | null> {
-    if (typeof credentials !== "string" || credentials.length === 0) {
+    if (typeof credentials !== "string") {
       return null;
     }
 
-    return this.verifyToken(credentials);
+    const token = credentials.trim();
+
+    if (token.length === 0) {
+      return null;
+    }
+
+    return this.verifyToken(token);
   }
 }

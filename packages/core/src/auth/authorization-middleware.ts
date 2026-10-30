@@ -1,6 +1,10 @@
 
 import type { Middleware } from "../app.js";
-import { ForbiddenError, UnauthorizedError } from "../errors.js";
+import {
+  AuthorizationError,
+  ForbiddenError,
+  UnauthorizedError,
+} from "../errors.js";
 import type { RequestContext } from "../context.js";
 import type { AuthUser } from "./types.js";
 
@@ -25,7 +29,11 @@ export function createAuthorizationMiddleware(
       );
     }
 
-    const allowed = await options.policy(user, ctx);
+    const allowed: unknown = await options.policy(user, ctx);
+
+    if (typeof allowed !== "boolean") {
+      throw new AuthorizationError();
+    }
 
     if (!allowed) {
       throw new ForbiddenError(

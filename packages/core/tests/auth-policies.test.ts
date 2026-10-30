@@ -70,4 +70,75 @@ describe("requirePermission", () => {
     await expect(policy(user, ctx)).resolves.toBe(true);
     expect(resolvePermissions).toHaveBeenCalledWith(user, ctx);
   });
+
+  it("rejects an empty role name", () => {
+  expect(() => requireRole("", () => ["admin"])).toThrow(
+    "Authorization role must be a non-empty string",
+  );
+});
+
+it("rejects a whitespace-only role name", () => {
+  expect(() => requireRole("   ", () => ["admin"])).toThrow(
+    "Authorization role must be a non-empty string",
+  );
+});
+
+it("rejects an empty permission name", () => {
+  expect(() =>
+    requirePermission("", () => ["users:read"]),
+  ).toThrow(
+    "Authorization permission must be a non-empty string",
+  );
+});
+
+it("rejects a whitespace-only permission name", () => {
+  expect(() =>
+    requirePermission("   ", () => ["users:read"]),
+  ).toThrow(
+    "Authorization permission must be a non-empty string",
+  );
+});
+
+it.each([
+  null,
+  undefined,
+  "admin",
+  {},
+  ["admin", 123],
+  ["admin", ""],
+  ["admin", "   "],
+])("rejects invalid role resolver output: %j", async (roles) => {
+  const policy = requireRole(
+    "admin",
+    () => roles as readonly string[],
+  );
+
+  await expect(policy(user, ctx)).rejects.toMatchObject({
+    name: "AuthorizationError",
+    statusCode: 500,
+    code: "AUTHORIZATION_POLICY_ERROR",
+  });
+});
+
+it.each([
+  null,
+  undefined,
+  "users:read",
+  {},
+  ["users:read", 123],
+  ["users:read", ""],
+  ["users:read", "   "],
+])("rejects invalid permission resolver output: %j", async (permissions) => {
+  const policy = requirePermission(
+    "users:read",
+    () => permissions as readonly string[],
+  );
+
+  await expect(policy(user, ctx)).rejects.toMatchObject({
+    name: "AuthorizationError",
+    statusCode: 500,
+    code: "AUTHORIZATION_POLICY_ERROR",
+  });
+});
+
 });

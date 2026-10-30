@@ -199,13 +199,27 @@ export class PostgresDatabaseAdapter implements SQLDatabaseAdapter {
         this.finishTransaction(transactionId);
       });
     } catch (error) {
-      if (client) {
-        client.release(error instanceof Error ? error : true);
-      }
+  let releaseError: unknown;
 
-      this.finishTransaction(transactionId);
-      throw error;
+  if (client) {
+    try {
+      client.release(error instanceof Error ? error : true);
+    } catch (cleanupError) {
+      releaseError = cleanupError;
     }
+  }
+
+  this.finishTransaction(transactionId);
+
+  if (releaseError !== undefined) {
+    throw new AggregateError(
+      [error, releaseError],
+      "PostgreSQL transaction startup and client cleanup both failed",
+    );
+  }
+
+  throw error;
+}
   }
 
   dispose(): Promise<void> {
@@ -260,7 +274,13 @@ export class PostgresDatabaseDriver implements DatabaseDriver {
   async connect(
     options: DatabaseConnectionOptions = {},
   ): Promise<PostgresDatabaseAdapter> {
+    const connectionString = options.connectionString?.trim();
+    if (!connectionString) {
+      throw new PostgresDriverConfigurationError("PostgreSQL connectionString is required",);
+    }
     const settings = options.settings as PostgresDriverSettings | undefined;
+
+    validatePostgresSettings(settings);
 
     const pool = new Pool({
       connectionString: options.connectionString,
@@ -273,8 +293,61 @@ export class PostgresDatabaseDriver implements DatabaseDriver {
       await pool.query("SELECT 1");
       return new PostgresDatabaseAdapter(pool);
     } catch (error) {
-      await pool.end().catch(() => undefined);
+      try {
+        await pool.end();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          "PostgreSQL connection failed and pool cleanup also failed",
+        );
+      }
+
       throw error;
+    }
+  }
+}
+
+export class PostgresDriverConfigurationError extends Error {
+  readonly code = "POSTGRES_CONFIGURATION_ERROR";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "PostgresDriverConfigurationError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+function validatePostgresSettings(
+  settings: PostgresDriverSettings | undefined,
+): void {
+  const positiveIntegerSettings = [
+    ["max", settings?.max],
+    ["connectionTimeoutMillis", settings?.connectionTimeoutMillis],
+  ] as const;
+
+  for (const [name, value] of positiveIntegerSettings) {
+    if (
+      value !== undefined &&
+      (!Number.isInteger(value) || value <= 0)
+    ) {
+      throw new PostgresDriverConfigurationError(
+        `PostgreSQL setting "${name}" must be a positive integer`,
+      );
+    }
+  }
+
+  const nonNegativeIntegerSettings = [
+    ["idleTimeoutMillis", settings?.idleTimeoutMillis],
+  ] as const;
+
+  for (const [name, value] of nonNegativeIntegerSettings) {
+    if (
+      value !== undefined &&
+      (!Number.isInteger(value) || value < 0)
+    ) {
+      throw new PostgresDriverConfigurationError(
+        `PostgreSQL setting "${name}" must be a non-negative integer`,
+      );
     }
   }
 }

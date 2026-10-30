@@ -1,5 +1,9 @@
-
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  PostgresDatabaseAdapter,
+  PostgresDatabaseDriver,
+  PostgresDriverConfigurationError,
+} from "../src/index.js";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -21,11 +25,6 @@ vi.mock("pg", () => ({
     }
   },
 }));
-
-import {
-  PostgresDatabaseAdapter,
-  PostgresDatabaseDriver,
-} from "../src/index.js";
 
 function createAdapter() {
   return new PostgresDatabaseAdapter({
@@ -739,6 +738,195 @@ it("waits for ordinary queries and transactions before closing the pool", async 
   await disposePromise;
 
   expect(mocks.end).toHaveBeenCalledOnce();
+});
+
+
+it("releases the transaction client when an active query fails during commit", async () => {
+  configureClient();
+
+  const queryError = new Error("Transactional query failed");
+
+  let rejectQuery!: (error: Error) => void;
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectQuery = reject;
+        }),
+    )
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+
+  const transaction = await createAdapter().beginTransaction();
+
+  const queryPromise = transaction.query("SELECT 1");
+
+  await vi.waitFor(() => {
+    expect(rejectQuery).toBeTypeOf("function");
+  });
+
+  const commitPromise = transaction.commit();
+
+  rejectQuery(queryError);
+
+  await expect(queryPromise).rejects.toBe(queryError);
+  await expect(commitPromise).resolves.toBeUndefined();
+
+  expect(mocks.clientQuery).toHaveBeenCalledWith("COMMIT");
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
+it("does not issue COMMIT or ROLLBACK when a transaction query is still pending", async () => {
+  configureClient();
+
+  let finishQuery!: (result: {
+    rows: { id: number }[];
+    rowCount: number;
+  }) => void;
+
+  mocks.clientQuery
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishQuery = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // ROLLBACK
+
+  const transaction = await createAdapter().beginTransaction();
+
+  const queryPromise = transaction.query<{ id: number }>("SELECT 1 AS id");
+
+  await vi.waitFor(() => {
+    expect(finishQuery).toBeTypeOf("function");
+  });
+
+  const rollbackPromise = transaction.rollback();
+
+  expect(mocks.clientQuery).not.toHaveBeenCalledWith("COMMIT");
+  expect(mocks.clientQuery).not.toHaveBeenCalledWith("ROLLBACK");
+
+  finishQuery({ rows: [{ id: 1 }], rowCount: 1 });
+
+  await queryPromise;
+  await rollbackPromise;
+
+  expect(mocks.clientQuery).toHaveBeenCalledWith("ROLLBACK");
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
+it("preserves BEGIN and client-release errors when both fail", async () => {
+  const beginError = new Error("BEGIN failed");
+  const releaseError = new Error("Client release failed");
+
+  mocks.connect.mockResolvedValueOnce({
+    query: mocks.clientQuery,
+    release: mocks.release.mockImplementationOnce(() => {
+      throw releaseError;
+    }),
+  });
+
+  mocks.clientQuery.mockRejectedValueOnce(beginError);
+
+  await expect(createAdapter().beginTransaction()).rejects.toMatchObject({
+    message:
+      "PostgreSQL transaction startup and client cleanup both failed",
+    errors: [beginError, releaseError],
+  });
+
+  expect(mocks.release).toHaveBeenCalledOnce();
+});
+
+describe("PostgreSQL driver configuration", () => {
+  const driver = new PostgresDatabaseDriver();
+
+  it("rejects a missing connection string", async () => {
+    await expect(driver.connect()).rejects.toBeInstanceOf(
+      PostgresDriverConfigurationError,
+    );
+
+    expect(mocks.poolConstructor).not.toHaveBeenCalled();
+  });
+
+  it("rejects a blank connection string", async () => {
+    await expect(
+      driver.connect({ connectionString: "   " }),
+    ).rejects.toThrow("connectionString is required");
+
+    expect(mocks.poolConstructor).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["max", 0],
+    ["max", -1],
+    ["max", 1.5],
+    ["connectionTimeoutMillis", 0],
+    ["connectionTimeoutMillis", -1],
+    ["idleTimeoutMillis", -1],
+    ["idleTimeoutMillis", 1.5],
+  ] as const)(
+    "rejects invalid setting %s=%s",
+    async (name, value) => {
+      await expect(
+        driver.connect({
+          connectionString: "postgres://test:test@localhost:5432/test",
+          settings: { [name]: value },
+        }),
+      ).rejects.toBeInstanceOf(PostgresDriverConfigurationError);
+
+      expect(mocks.poolConstructor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts zero idle timeout", async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const adapter = await driver.connect({
+      connectionString: "postgres://test:test@localhost:5432/test",
+      settings: { idleTimeoutMillis: 0 },
+    });
+
+    expect(mocks.poolConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({ idleTimeoutMillis: 0 }),
+    );
+
+    await adapter.dispose();
+  });
+});
+
+it("preserves the connection error when pool cleanup succeeds", async () => {
+  const connectionError = new Error("Connection refused");
+
+  mocks.query.mockRejectedValueOnce(connectionError);
+  mocks.end.mockResolvedValueOnce(undefined);
+
+  await expect(
+    new PostgresDatabaseDriver().connect({
+      connectionString: "postgres://test:test@localhost:5432/test",
+    }),
+  ).rejects.toBe(connectionError);
+
+  expect(mocks.end).toHaveBeenCalledTimes(1);
+});
+
+it("preserves connection and cleanup errors when both fail", async () => {
+  const connectionError = new Error("Connection refused");
+  const cleanupError = new Error("Pool cleanup failed");
+
+  mocks.query.mockRejectedValueOnce(connectionError);
+  mocks.end.mockRejectedValueOnce(cleanupError);
+
+  const promise = new PostgresDatabaseDriver().connect({
+    connectionString: "postgres://test:test@localhost:5432/test",
+  });
+
+  await expect(promise).rejects.toMatchObject({
+    name: "AggregateError",
+    message: "PostgreSQL connection failed and pool cleanup also failed",
+    errors: [connectionError, cleanupError],
+  });
 });
 
 });
